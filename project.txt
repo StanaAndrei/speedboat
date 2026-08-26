@@ -1,0 +1,141 @@
+# Project Speedboat: Universal Volunteer Computing Blueprint (2026)
+
+## 1. Overview Architecture: The "Modular Multi-Tier" Model
+Project Speedboat is a modern, modular volunteer computing platform separating scientific logic from untrusted infrastructure[cite: 1].
+
+* **Master Node (Orchestrator):** Manages NATS work queues, automates container image baking and WASM compilation, and validates results.
+* **Message Bus (NATS.io):** A real-time system that punches through firewalls and NATs using native WebSocket and TCP connections.
+* **Primary Worker (Native Go Agent):** A portable single-binary client (`agent.exe` / `.app`) powered by Wails v3 or a headless CLI. It dynamically switches between **Heavy Mode** (rootless `crun`/`apptainer`) and **Lite Mode** (embedded **wazero** runtime).
+* **Secondary Worker (Browser WASM):** A zero-install fallback executing tasks inside a browser tab via Web Workers and `nats.ws`.
+
+---
+
+## 2. The Volunteer Experience: Single-Binary Zero Friction
+
+### The Windows "Holy Grail" (`agent.exe`)
+Windows adoption typically fails due to driver conflicts, virtualization requirements, and update loops. Speedboat solves this through pure Go static linking:
+* **Zero External Dependencies:** No Docker Desktop, no WSL2, no VirtualBox, and no C++ redistributables or CGO required.
+* **Dual Execution Path:**
+  * **Heavy Mode:** If a container runtime (`crun`/`podman`) is present, the agent runs native OCI/Apptainer containers with full hardware access (GPU/AVX-512).
+  * **Lite Mode (Embedded `wazero`):** If no container engine exists, the agent executes `.wasm` payloads directly inside its own memory space using **wazero** (zero-dependency pure Go WebAssembly runtime).
+* **Silent In-Memory JIT:** `wazero` compiles `.wasm` bytecode in-memory to native x86-64/ARM64 machine code, achieving 85–90% of native speed with no browser overhead.
+* **UI Options:** Available as a lightweight **Wails v3** desktop GUI (using the OS native WebView) or a minimal system tray/terminal app.
+
+---
+
+## 3. WASM Compilation Strategy: Direct vs. container2wasm (c2w)
+For Lite Mode and Browser workers, the Master Node uses a two-tier strategy to generate `.wasm` payloads from scientific code:
+
+### Direct Cross-Compilation (Targeted WASI)
+* **How it works:** Compiles code directly to WebAssembly bytecode via LLVM, Emscripten, or Pyodide.
+* **Performance:** Minimal overhead (~10–15% slowdown relative to native speed via JIT).
+* **Payload Size:** Highly optimized, compact artifacts (1 MB – 30 MB).
+* **Best for:** High-throughput, performance-critical compute tasks where CPU efficiency matters.
+
+### container2wasm (c2w Full Emulation Fallback)
+* **How it works:** Converts an existing Linux Docker image directly into a `.wasm` file by packaging the entire container root filesystem (OS, dynamic `.so` libraries, binaries) together with a software CPU emulator (such as Bochs, TinyEMU, or QEMU). The volunteer's WASM engine boots an emulated Linux environment inside WebAssembly.
+* **Performance:** High compute overhead (~5x–20x+ slowdown due to instruction emulation in software).
+* **Payload Size:** Substantially larger artifacts (50 MB – 300 MB+ including rootfs).
+* **Best for:** Universal fallback for legacy C++/Fortran binaries, dynamic shared objects, or complex system dependencies that fail native WASI cross-compilation—enabling zero-friction execution directly from unmodified Docker containers.
+
+### WASM Strategy Comparison
+
+| Feature | Direct Cross-Compilation (LLVM / WASI) | container2wasm (Full Container to WASM) |
+| :--- | :--- | :--- |
+| **Compute Overhead** | ~10–15% slowdown (Near-native JIT) | ~5x–20x+ slowdown (Software CPU emulation) |
+| **Artifact Size** | Small (1 MB – 30 MB compiled logic) | Large (50 MB – 300 MB+ including Linux rootfs) |
+| **Legacy/Fortran Support** | Requires LLVM Flang / cross-toolchains | Works out-of-the-box (any Docker image) |
+| **Scientist Friction** | Needs build-target configuration | Zero (reuses existing Docker image directly) |
+| **Memory Footprint** | Low (only allocated logic memory) | Higher (RAM for emulated OS boot + workload) |
+
+---
+
+## 4. Scientist UX: "Math-to-Grid" Pipeline
+Scientists write scientific code without needing to learn DevOps, cross-compilation, or distributed systems.
+
+* **Auto-Baking:** The scientist provides scientific source files (`logic.py`, `.cpp`, `.f90`, or `.rs`) and a `project.yaml`. The Master Node auto-builds OCI container images and compiles WASM binaries (via direct toolchains or `container2wasm` fallback).
+* **The Standard Stream Contract:**
+  * **Generator (Python):** Emits a JSON array of task specifications to `stdout`.
+  * **Logic (Any Language):** Reads a task JSON from `stdin` and writes the calculated JSON result to `stdout`.
+  * **Reducer (Python):** Collects verified result batches via `stdin` to aggregate the final research dataset.
+
+---
+
+## 5. Security & Isolation: "Zero-Trust Sandboxing"
+All computations execute inside strict technical boundaries to prevent system compromise or data exfiltration.
+
+* **Container Isolation (Heavy Mode):** Unprivileged, rootless execution using Linux user namespaces, read-only root filesystems, seccomp filters, and disabled networking.
+* **In-Memory Memory Sandbox (`wazero` Lite Mode):** The WASM payload is confined to its allocated memory block. It has zero access to host files (`C:\Users\...`), the Windows Registry, peripherals, or host network interfaces.
+* **Trap Error Handling:** If scientific code crashes or attempts an out-of-bounds memory access, `wazero` raises a runtime trap, terminating only the isolated task while keeping the host system completely stable.
+
+---
+
+## 6. Result Verification & Anti-Cheating
+Because volunteer nodes are untrusted and leaderboard incentives can encourage spoofing, integrity checks are mandatory:
+
+* **Redundancy Verification:** Master dispatches identical task payloads to 3 distinct workers.
+* **Majority Consensus:** Results are accepted into the reducer only when at least 2 out of 3 outputs match bit-for-bit.
+* **Spot-Checking:** The Master periodically injects deterministic "trap tasks" with pre-calculated outputs to detect and ban bad actors.
+
+---
+
+## 7. Execution Matrix
+
+| Capability | Browser (WASM) | Lite Mode (`wazero` Agent) | Heavy Mode (`crun` / Apptainer) |
+| :--- | :--- | :--- | :--- |
+| **Prerequisites** | Web Browser | `agent.exe` (Single file) | Container Runtime / Linux |
+| **Performance** | ~80% Native (or c2w emulation) | ~85–90% Native (or c2w emulation) | 100% Native + GPU / AVX-512 |
+| **WASM Engine** | Browser Web Worker / WebGPU | Embedded `wazero` (JIT) | N/A (OCI Container Runtime) |
+| **Isolation** | Browser Sandbox | Software Memory Jail | Linux Kernel Namespaces / Seccomp |
+| **Persistence** | While tab is active | Background process / System tray | System service / Background daemon |
+| **Networking** | `nats.ws` (WebSocket) | NATS TCP / WebSocket | NATS TCP |
+
+
+---------------------------------------------------------------------------------------
+
+speedboat/
+├── cmd/
+│   ├── master/           # The Orchestrator (Scientist's side)
+│   │   └── main.go       # Runs the Splitter, Reducer, and NATS Object Store uploader
+│   ├── agent/            # The Volunteer Client (One-click binary)
+│   │   └── main.go       # Checks for Docker/WASM and executes the sandbox
+│   └── speedboat-cli/    # (Optional) Helper tool for Scientists
+│       └── main.go       # Commands like 'speedboat init' or 'speedboat deploy'
+│
+├── internal/
+│   ├── protocol/         # Shared JSON Schemas
+│   │   └── types.go      # Task, Result, and Project Metadata structs
+│   ├── transport/        # NATS Logic
+│   │   ├── nats.go       # Connection handling
+│   │   └── storage.go    # JetStream Object Store (WASM binary delivery)
+│   ├── builder/          # The "Baking" Engine
+│   │   ├── docker.go     # Docker Engine API (Image generation)
+│   │   └── wasm.go       # Cross-compilation logic (Emscripten/LLVM wrappers)
+│   └── runtime/          # Execution Engines
+│       ├── docker.go     # Logic to pull/run Docker containers
+│       └── wasm.go       # Embedded 'wazero' runtime logic
+│
+├── api/
+│   └── contract/         # Documentation/JSON schemas for the "JSON Contract"
+│       └── task_spec.json
+│
+├── science-projects/     # Workspace for Scientists
+│   ├── templates/        # Standard "Base" folders for C++, Py, Fortran
+│   │   ├── cpp/
+│   │   ├── python/
+│   │   └── fortran/
+│   └── prime-counter/    # Our Example Case
+│       ├── project.yaml  # Config: language, build commands, hardware needs
+│       ├── generator.py  # Phase A: Splitter
+│       ├── logic.cpp     # Phase C: The Math (to be baked)
+│       └── reducer.py    # Phase D: Aggregator
+│
+├── build/                # Temporary workspace (ignored by git)
+│   └── artifacts/        # Where generated .wasm files and Docker contexts sit
+│
+├── scripts/              # Bootstrap scripts
+│   └── install_agent.sh  # One-liner for Linux/Mac volunteers
+│
+├── docker-compose.yaml   # For Scientist: Spins up NATS + Registry locally
+├── go.mod                # Project dependencies (nats.go, docker sdk, wazero)
+└── .env.example          # Template for NATS_URL, RUNTIME_PREFERENCE, etc.
