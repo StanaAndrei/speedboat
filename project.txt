@@ -1,7 +1,7 @@
 # Project Speedboat: Universal Volunteer Computing Blueprint (2026)
 
 ## 1. Overview Architecture: The "Modular Multi-Tier" Model
-Project Speedboat is a modern, modular volunteer computing platform separating scientific logic from untrusted infrastructure[cite: 1].
+Project Speedboat is a modern, modular volunteer computing platform separating scientific logic from untrusted infrastructure.
 
 * **Master Node (Orchestrator):** Manages NATS work queues, automates container image baking and WASM compilation, and validates results.
 * **Message Bus (NATS.io):** A real-time system that punches through firewalls and NATs using native WebSocket and TCP connections.
@@ -32,17 +32,18 @@ For Lite Mode and Browser workers, the Master Node uses a two-tier strategy to g
 * **Payload Size:** Highly optimized, compact artifacts (1 MB – 30 MB).
 * **Best for:** High-throughput, performance-critical compute tasks where CPU efficiency matters.
 
-### container2wasm (c2w Full Emulation Fallback)
-* **How it works:** Converts an existing Linux Docker image directly into a `.wasm` file by packaging the entire container root filesystem (OS, dynamic `.so` libraries, binaries) together with a software CPU emulator (such as Bochs, TinyEMU, or QEMU). The volunteer's WASM engine boots an emulated Linux environment inside WebAssembly.
-* **Performance:** High compute overhead (~5x–20x+ slowdown due to instruction emulation in software).
+### container2wasm (c2w Full Emulation & Debugging Target)
+* **How it works:** Converts an existing Linux Docker image directly into a `.wasm` file by packaging the entire container root filesystem (OS, dynamic `.so` libraries, binaries) together with a software CPU emulator (such as Bochs, TinyEMU, or QEMU).
+* **The Fallback Penalty:** A $5\times$ to $20\times$ software CPU emulation slowdown makes long-running scientific simulations impractical. Running failed WASI targets through c2w wastes volunteer compute cycles and electricity; it is strictly a rapid prototyping and debugging target, not a production compute tier.
 * **Payload Size:** Substantially larger artifacts (50 MB – 300 MB+ including rootfs).
-* **Best for:** Universal fallback for legacy C++/Fortran binaries, dynamic shared objects, or complex system dependencies that fail native WASI cross-compilation—enabling zero-friction execution directly from unmodified Docker containers.
+* **Best for:** Functional verification and fallback debugging for legacy C++/Fortran binaries or complex dynamic libraries that fail native WASI cross-compilation.
 
 ### WASM Strategy Comparison
 
 | Feature | Direct Cross-Compilation (LLVM / WASI) | container2wasm (Full Container to WASM) |
 | :--- | :--- | :--- |
 | **Compute Overhead** | ~10–15% slowdown (Near-native JIT) | ~5x–20x+ slowdown (Software CPU emulation) |
+| **Role in Platform** | Production Lite/Browser Compute | Rapid Debugging / Prototyping Target Only |
 | **Artifact Size** | Small (1 MB – 30 MB compiled logic) | Large (50 MB – 300 MB+ including Linux rootfs) |
 | **Legacy/Fortran Support** | Requires LLVM Flang / cross-toolchains | Works out-of-the-box (any Docker image) |
 | **Scientist Friction** | Needs build-target configuration | Zero (reuses existing Docker image directly) |
@@ -50,10 +51,18 @@ For Lite Mode and Browser workers, the Master Node uses a two-tier strategy to g
 
 ---
 
-## 4. Scientist UX: "Math-to-Grid" Pipeline
+## 4. Hardware Acceleration: GPU Compute Parity
+Modern scientific workloads (Folding@home molecular dynamics, cryo-EM processing, LLM fine-tuning) run almost exclusively on accelerated hardware:
+
+* **Heavy Mode (Native Acceleration):** Direct access to NVIDIA CUDA, AMD ROCm, and Intel oneAPI via host driver pass-through in rootless containers.
+* **Lite & Browser Mode Roadmap:** To avoid remaining purely CPU-bound, Lite Mode targets WebGPU and WASI-NN bindings to execute tensor and matrix workloads inside WASM runtimes without requiring full container engines.
+
+---
+
+## 5. Scientist UX: "Math-to-Grid" Pipeline
 Scientists write scientific code without needing to learn DevOps, cross-compilation, or distributed systems.
 
-* **Auto-Baking:** The scientist provides scientific source files (`logic.py`, `.cpp`, `.f90`, or `.rs`) and a `project.yaml`. The Master Node auto-builds OCI container images and compiles WASM binaries (via direct toolchains or `container2wasm` fallback).
+* **Auto-Baking:** The scientist provides scientific source files (`logic.py`, `.cpp`, `.f90`, or `.rs`) and a `project.yaml`. The Master Node auto-builds OCI container images and compiles WASM binaries.
 * **The Standard Stream Contract:**
   * **Generator (Python):** Emits a JSON array of task specifications to `stdout`.
   * **Logic (Any Language):** Reads a task JSON from `stdin` and writes the calculated JSON result to `stdout`.
@@ -61,7 +70,7 @@ Scientists write scientific code without needing to learn DevOps, cross-compilat
 
 ---
 
-## 5. Security & Isolation: "Zero-Trust Sandboxing"
+## 6. Security & Isolation: "Zero-Trust Sandboxing"
 All computations execute inside strict technical boundaries to prevent system compromise or data exfiltration.
 
 * **Container Isolation (Heavy Mode):** Unprivileged, rootless execution using Linux user namespaces, read-only root filesystems, seccomp filters, and disabled networking.
@@ -70,27 +79,38 @@ All computations execute inside strict technical boundaries to prevent system co
 
 ---
 
-## 6. Result Verification & Anti-Cheating
+## 7. Result Verification & Anti-Cheating
+
 Because volunteer nodes are untrusted and leaderboard incentives can encourage spoofing, integrity checks are mandatory:
 
 * **Redundancy Verification:** Master dispatches identical task payloads to 3 distinct workers.
-* **Majority Consensus:** Results are accepted into the reducer only when at least 2 out of 3 outputs match bit-for-bit.
+* **Deterministic Consensus & Floating-Point Handling:**
+  * *The Flaw:* Floating-point arithmetic ($FP32 / FP64$) varies across architectures (x86-64 vs. ARM64 vs. WASM software floats). Exact bit-for-bit string comparisons cause false negatives across heterogeneous nodes.
+  * *The Mitigation:* Majority consensus enforces deterministic compilation flags (e.g., `-ffp-contract=off`, `-fno-fast-math`), fixed-point math where viable, or domain-specific epsilon tolerance comparisons in the Reducer.
+* **Majority Consensus:** Results are accepted into the reducer once 2 out of 3 outputs agree within defined tolerance thresholds.
 * **Spot-Checking:** The Master periodically injects deterministic "trap tasks" with pre-calculated outputs to detect and ban bad actors.
 
 ---
 
-## 7. Execution Matrix
+## 8. Execution Matrix
 
 | Capability | Browser (WASM) | Lite Mode (`wazero` Agent) | Heavy Mode (`crun` / Apptainer) |
 | :--- | :--- | :--- | :--- |
 | **Prerequisites** | Web Browser | `agent.exe` (Single file) | Container Runtime / Linux |
-| **Performance** | ~80% Native (or c2w emulation) | ~85–90% Native (or c2w emulation) | 100% Native + GPU / AVX-512 |
-| **WASM Engine** | Browser Web Worker / WebGPU | Embedded `wazero` (JIT) | N/A (OCI Container Runtime) |
+| **Performance** | ~80% Native | ~85–90% Native (JIT) | 100% Native + GPU / AVX-512 |
+| **Acceleration** | WebGPU (Targeted) | CPU / WASI-NN (Roadmap) | Full CUDA / ROCm / AVX-512 |
+| **WASM Engine** | Browser Web Worker | Embedded `wazero` (JIT) | N/A (OCI Container Runtime) |
 | **Isolation** | Browser Sandbox | Software Memory Jail | Linux Kernel Namespaces / Seccomp |
 | **Persistence** | While tab is active | Background process / System tray | System service / Background daemon |
 | **Networking** | `nats.ws` (WebSocket) | NATS TCP / WebSocket | NATS TCP |
 
+----BONUS--------------------
+Build the Gamification Layer Early: Volunteer networks live and die by badges, leaderboards, and transparent stats.
+ Integrating an open telemetry/credit pipeline into the master orchestrator is essential for user retention.  
 
+
+Double Down on the Single-Binary Pitch: Promote the agent.exe workflow heavily. The ability for someone to download a $15\text{ MB}$ .exe, 
+run it from user space with no admin privileges, and instantly crunch numbers safely is Speedboat's strongest market advantage.  
 ---------------------------------------------------------------------------------------
 
 speedboat/
