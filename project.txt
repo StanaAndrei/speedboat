@@ -139,7 +139,7 @@ speedboat/
 │   └── contract/         # Documentation/JSON schemas for the "JSON Contract"
 │       └── task_spec.json
 │
-├── science-projects/     # Workspace for Scientists
+├── examples/     # Workspace for Scientists
 │   ├── templates/        # Standard "Base" folders for C++, Py, Fortran
 │   │   ├── cpp/
 │   │   ├── python/
@@ -159,3 +159,27 @@ speedboat/
 ├── docker-compose.yaml   # For Scientist: Spins up NATS + Registry locally
 ├── go.mod                # Project dependencies (nats.go, docker sdk, wazero)
 └── .env.example          # Template for NATS_URL, RUNTIME_PREFERENCE, etc.
+
+----------------------------------------------------------
+
+Example workflow in the easiest case(container build and cli agent):
+[Scientist / Master Node]                                  [Technical Volunteer / Agent]
+            │                                                              │
+   1. Bake Docker Image & push to Registry                                 │
+   2. Run generator.py -> emit tasks                                       │
+   3. Push tasks to JetStream WorkQueue Stream                             │
+   4. Publish project announcement (NATS URL + Project ID)                 │
+            │                                                              │
+            │ ── (Volunteer receives URL & Project ID via CLI/env) ──────> │
+            │                                                              │
+            │ <── Pull Image from Registry via Apptainer ───────────────── │
+            │ <── JetStream Consumer Pull (Fetch 1 Task, auto-locks) ───── │
+            │                                                              │
+            │                                               [Runs Container]
+            │                                               JSON via stdin -> logic -> stdout
+            │                                                              │
+            │ <── Publish Result to `results.<project_id>` ─────────────── │
+            │ <── Send JetStream ACK (Task deleted from pending queue) ─── │
+            │                                                              │
+   5. Master verifies consensus / redundancy                               │
+   6. Pipe verified results to reducer.py

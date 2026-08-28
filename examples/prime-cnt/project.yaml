@@ -1,0 +1,15 @@
+name: prime-counter
+version: "1.0.0"
+entrypoint:
+  language: cpp
+  source: logic.cpp
+  standard: c++17
+generator:
+  runtime: python3
+  source: generator.py
+reducer:
+  runtime: python3
+  source: reducer.py
+verification:
+  redundancy: 3
+  consensus_threshold: 2
