@@ -1,9 +1,8 @@
 name: prime-counter
 version: "1.0.0"
-entrypoint:
-  language: cpp
-  source: logic.cpp
-  standard: c++17
+container:
+  dockerfile: "./Dockerfile"
+  image_tag: "prime-counter:latest"
 generator:
   runtime: python3
   source: generator.py
