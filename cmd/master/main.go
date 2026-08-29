@@ -18,6 +18,10 @@ type CLI struct {
 	} `cmd:"" help:"Bake Docker/WASM artifacts without starting the grid."`
 }
 
+func run() {
+	
+}
+
 func main() {
 	var cli CLI
 	ctx := kong.Parse(&cli,

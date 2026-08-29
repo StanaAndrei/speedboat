@@ -140,6 +140,7 @@ speedboat/
 │       └── task_spec.json
 │
 ├── examples/     # Workspace for Scientists
+|   |── docker-compose.yaml   # For Scientist: Spins up NATS + Registry locally
 │   ├── templates/        # Standard "Base" folders for C++, Py, Fortran
 │   │   ├── cpp/
 │   │   ├── python/
@@ -156,7 +157,6 @@ speedboat/
 ├── scripts/              # Bootstrap scripts
 │   └── install_agent.sh  # One-liner for Linux/Mac volunteers
 │
-├── docker-compose.yaml   # For Scientist: Spins up NATS + Registry locally
 ├── go.mod                # Project dependencies (nats.go, docker sdk, wazero)
 └── .env.example          # Template for NATS_URL, RUNTIME_PREFERENCE, etc.
 

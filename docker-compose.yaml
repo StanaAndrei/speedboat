@@ -1,0 +1,36 @@
+services:
+  nats:
+    image: nats:2.10-alpine
+    container_name: speedboat-nats
+    restart: unless-stopped
+    command:
+      - "-js"                      # Enable JetStream for WorkQueue persistence
+      - "-sd"
+      - "/data"                    # JetStream storage directory
+      - "-m"
+      - "8222"                     # Enable monitoring dashboard
+    ports:
+      - "4222:4222"                # Native TCP client port
+      - "8222:8222"                # HTTP management / monitoring
+      - "8080:8080"                # WebSocket port for nats.ws browser clients
+    volumes:
+      - nats_data:/data
+    environment:
+      - NATS_SERVER_NAME=speedboat-master
+      - NATS_WEBSOCKET_PORT=8080
+      - NATS_WEBSOCKET_NO_TLS=true # Set to false and mount certs in production
+
+  registry:
+    image: registry:2
+    container_name: speedboat-registry
+    restart: unless-stopped
+    ports:
+      - "5000:5000"                # Docker Registry HTTP endpoint
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry_data:/var/lib/registry
+
+volumes:
+  nats_data:
+  registry_data:
