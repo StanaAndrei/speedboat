@@ -1,3 +1,6 @@
+.PHONY: build build-master-cli build-agent-cli clean
+
+build: build-master-cli build-agent-cli
 
 
 build-master-cli:
