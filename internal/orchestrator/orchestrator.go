@@ -1,8 +1,11 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -79,5 +82,50 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	o.nc = nc
 	o.js = js
 
+	fmt.Printf("   ✓ Initializing JetStream WorkQueue stream for project '%s'...\n", cfg.Name)
+	if _, err := transport.EnsureTaskStream(js, cfg.Name); err != nil {
+		return fmt.Errorf("failed to ensure task stream: %w", err)
+	}
+
+	// 4. Run task generator
+	fmt.Printf("⚙️  Step 3/6: Running generator script (%s %s)...\n", cfg.Generator.Runtime, cfg.Generator.Source)
+	rawTasks, err := o.runGenerator(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("generator script failed: %w", err)
+	}
+	totalTasks := len(rawTasks)
+	if totalTasks == 0 {
+		return fmt.Errorf("generator produced 0 tasks")
+	}
+	fmt.Printf("   ✓ Generated %d unique tasks\n", totalTasks)
+
 	return nil
+}
+
+func (o *Orchestrator) runGenerator(ctx context.Context, cfg *protocol.ProjectConfig) ([]json.RawMessage, error) {
+	scriptPath := cfg.Generator.Source
+	if !filepath.IsAbs(scriptPath) {
+		scriptPath = filepath.Join(o.ProjectDir, scriptPath)
+	}
+
+	runtimeBin := cfg.Generator.Runtime
+	if runtimeBin == "" {
+		runtimeBin = "python3"
+	}
+
+	cmd := exec.CommandContext(ctx, runtimeBin, scriptPath)
+	cmd.Dir = o.ProjectDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("generator execution failed: %w\nstderr: %s", err, stderr.String())
+	}
+	var tasks []json.RawMessage
+	if err := json.Unmarshal(stdout.Bytes(), &tasks); err != nil {
+		return nil, fmt.Errorf("generator output is not a valid JSON array: %w\noutput: %s", err, stdout.String())
+	}
+	return tasks, nil
 }
