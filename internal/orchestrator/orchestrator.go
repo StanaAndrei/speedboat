@@ -4,9 +4,13 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"time"
+
 	"speedboat/internal/builder"
 	"speedboat/internal/protocol"
-	"time"
+	"speedboat/internal/transport"
+
+	"github.com/nats-io/nats.go"
 )
 
 type Orchestrator struct {
@@ -16,6 +20,8 @@ type Orchestrator struct {
 	NoBuild    bool
 	Timeout    time.Duration
 	Config     *protocol.ProjectConfig
+	nc         *nats.Conn
+	js         nats.JetStreamContext
 }
 
 func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild bool) *Orchestrator {
@@ -62,5 +68,16 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 		fmt.Printf("⏩ Step 1/6: Skipping build. Using image tag: %s\n", imageTag)
 	}
+
+	// 3. Connect to NATS + setup JetStream
+	fmt.Printf("🔌 Step 2/6: Connecting to NATS at %s...\n", o.NatsURL)
+	nc, js, err := transport.Connect(o.NatsURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to NATS: %w", err)
+	}
+	defer nc.Close()
+	o.nc = nc
+	o.js = js
+
 	return nil
 }
