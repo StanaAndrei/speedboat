@@ -32,6 +32,18 @@ type VerificationConfig struct {
 	ConsensusThreshold int `yaml:"consensus_threshold" json:"consensus_threshold"`
 }
 
+type ProjectAnnouncement struct {
+	ProjectID          string `json:"project_id"`
+	Name               string `json:"name"`
+	Version            string `json:"version"`
+	Image              string `json:"image"`
+	NatsURL            string `json:"nats_url,omitempty"`
+	TotalTasks         int    `json:"total_tasks,omitempty"`
+	Redundancy         int    `json:"redundancy,omitempty"`
+	ConsensusThreshold int    `json:"consensus_threshold,omitempty"`
+	CreatedAt          int64  `json:"created_at,omitempty"`
+}
+
 func LoadProjectConfig(projectDir string) (*ProjectConfig, error) {
 	candidates := []string{
 		filepath.Join(projectDir, "project.yaml"),

@@ -49,6 +49,14 @@ func TasksSubject(projectID string) string { // subject used for publish/consume
 	return fmt.Sprintf("tasks.%s", projectID)
 }
 
+func AnnouncementsSubject() string { // subject for global project announcements
+	return "announcements"
+}
+
+func ProjectInfoSubject(projectID string) string { // subject for querying specific project information
+	return fmt.Sprintf("projects.%s.info", projectID)
+}
+
 // creates or refreshes a JetStream WorkQueue stream
 func EnsureTaskStream(js nats.JetStreamContext, projectID string) (*nats.StreamInfo, error) {
 	streamName := TasksStreamName(projectID)
@@ -70,4 +78,13 @@ func EnsureTaskStream(js nats.JetStreamContext, projectID string) (*nats.StreamI
 		return nil, fmt.Errorf("failed to create JetStream stream %s: %w", streamName, err)
 	}
 	return info, nil
+}
+
+func PublishTask(js nats.JetStreamContext, projectID string, data []byte) error {
+	subj := TasksSubject(projectID)
+	_, err := js.Publish(subj, data)
+	if err != nil {
+		return fmt.Errorf("failed to publish task to %s: %w", subj, err)
+	}
+	return nil
 }

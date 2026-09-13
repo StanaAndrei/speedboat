@@ -99,6 +99,72 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	}
 	fmt.Printf("   ✓ Generated %d unique tasks\n", totalTasks)
 
+	// 5. publish announcement & Push Tasks to WorkQueue
+	fmt.Printf("📢 Step 4/6: Publishing project announcement and queuing tasks...\n")
+	announcement := protocol.ProjectAnnouncement{
+		ProjectID:          cfg.Name,
+		Name:               cfg.Name,
+		Version:            cfg.Version,
+		Image:              imageTag,
+		NatsURL:            o.NatsURL,
+		TotalTasks:         totalTasks,
+		Redundancy:         cfg.Verification.Redundancy,
+		ConsensusThreshold: cfg.Verification.ConsensusThreshold,
+		CreatedAt:          time.Now().Unix(),
+	}
+	annBytes, _ := json.Marshal(announcement)
+	// _ = nc.Publish(transport.AnnouncementsSubject(), annBytes)
+	// _ = nc.Publish(transport.ProjectInfoSubject(cfg.Name), annBytes)
+
+	// Respond to info requests
+	infoSub, _ := nc.Subscribe(transport.ProjectInfoSubject(cfg.Name), func(msg *nats.Msg) {
+		if msg.Reply != "" {
+			_ = msg.Respond(annBytes)
+		}
+	})
+	defer func() {
+		if infoSub != nil {
+			_ = infoSub.Unsubscribe()
+		}
+	}()
+
+	// Push task messages with redundancy
+	taskOrder := make([]string, 0, totalTasks)
+	for idx, rawTask := range rawTasks {
+		var taskObj map[string]any
+		if err := json.Unmarshal(rawTask, &taskObj); err != nil {
+			return fmt.Errorf("invalid task JSON at index %d: %w", idx, err)
+		}
+
+		taskID, ok := taskObj["task_id"].(string)
+		if !ok || taskID == "" {
+			taskID = fmt.Sprintf("task-%04d", idx)
+			taskObj["task_id"] = taskID
+		}
+		taskOrder = append(taskOrder, taskID)
+
+		taskObj["project_id"] = cfg.Name
+		taskObj["image"] = imageTag
+
+		augmentedBytes, err := json.Marshal(taskObj)
+		if err != nil {
+			return fmt.Errorf("failed to marshal task %s: %w", taskID, err)
+		}
+
+		// Push redundancy copies to JetStream WorkQueue
+		redundancy := cfg.Verification.Redundancy
+		if redundancy <= 0 {
+			redundancy = 1
+		}
+		for r := 0; r < redundancy; r++ {
+			if err := transport.PublishTask(js, cfg.Name, augmentedBytes); err != nil {
+				return fmt.Errorf("failed to publish task %s (replica %d): %w", taskID, r, err)
+			}
+		}
+	}
+	fmt.Printf("   ✓ Queued %d messages (%d tasks x %d redundancy) in WorkQueue\n",
+		totalTasks*cfg.Verification.Redundancy, totalTasks, cfg.Verification.Redundancy)
+
 	return nil
 }
 
@@ -127,5 +193,6 @@ func (o *Orchestrator) runGenerator(ctx context.Context, cfg *protocol.ProjectCo
 	if err := json.Unmarshal(stdout.Bytes(), &tasks); err != nil {
 		return nil, fmt.Errorf("generator output is not a valid JSON array: %w\noutput: %s", err, stdout.String())
 	}
+	// fmt.Print(tasks[0])
 	return tasks, nil
 }
