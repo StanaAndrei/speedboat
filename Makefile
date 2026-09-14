@@ -9,10 +9,10 @@ build-master-cli:
 build-agent-cli:
 	go build -o build/speedboat-agent ./cmd/agent
 
-compose:
+compose-up:
 	cd ./examples && docker compose up -d
 
-kill:
+compose-down:
 	cd ./examples && docker compose down
 
 clean:
