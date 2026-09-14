@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,6 +31,23 @@ type ScriptConfig struct { // runtime and source for generator or reducer script
 type VerificationConfig struct {
 	Redundancy         int `yaml:"redundancy" json:"redundancy"`
 	ConsensusThreshold int `yaml:"consensus_threshold" json:"consensus_threshold"`
+}
+
+type Task struct {
+	TaskID    string          `json:"task_id"`
+	ProjectID string          `json:"project_id,omitempty"`
+	Image     string          `json:"image,omitempty"`
+	Params    json.RawMessage `json:"params,omitempty"`
+	Raw       json.RawMessage `json:"-"`
+}
+
+type TaskResult struct {
+	TaskID    string          `json:"task_id"`
+	ProjectID string          `json:"project_id,omitempty"`
+	Status    string          `json:"status"` // "ok" or "error"
+	Output    json.RawMessage `json:"output,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	WorkerID  string          `json:"worker_id,omitempty"`
 }
 
 type ProjectAnnouncement struct {

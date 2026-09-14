@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"speedboat/internal/protocol"
 	"speedboat/internal/runtime"
 	"speedboat/internal/transport"
 
@@ -129,5 +131,84 @@ func (a *Agent) Run(ctx context.Context) error {
 }
 
 func (a *Agent) processTaskMessage(ctx context.Context, msg *nats.Msg) error {
+	var task protocol.Task
+	if err := json.Unmarshal(msg.Data, &task); err != nil {
+		_ = msg.Ack()
+		return fmt.Errorf("unmarshal task JSON failed: %w", err)
+	}
+
+	taskID := task.TaskID
+	if taskID == "" {
+		taskID = "unknown"
+	}
+
+	image := task.Image
+	if image == "" {
+		// Fallback to project ID tag if not present in task
+		image = fmt.Sprintf("%s:latest", a.ProjectID)
+	}
+
+	startTime := time.Now()
+	fmt.Printf("📥 [Worker %s] Fetched task %s (image: %s)\n", a.WorkerID, taskID, image)
+
+	// Ensure container image is available
+	if err := a.engine.PullImage(ctx, image); err != nil {
+		fmt.Printf("⚠️  [Worker %s] Image pull warning: %v\n", a.WorkerID, err)
+	}
+
+	// Execute container logic via stdin -> stdout
+	stdoutBytes, execErr := a.engine.Execute(ctx, image, msg.Data)
+	duration := time.Since(startTime)
+
+	var taskResult protocol.TaskResult
+	if execErr != nil {
+		fmt.Printf("❌ [Worker %s] Task %s failed after %v: %v\n", a.WorkerID, taskID, duration, execErr)
+		taskResult = protocol.TaskResult{
+			TaskID:    taskID,
+			ProjectID: a.ProjectID,
+			Status:    "error",
+			Error:     execErr.Error(),
+			WorkerID:  a.WorkerID,
+		}
+	} else {
+		// Try parsing stdout as standard TaskResult JSON
+		if err := json.Unmarshal(stdoutBytes, &taskResult); err != nil {
+			// If stdout is arbitrary JSON or raw output, wrap it
+			taskResult = protocol.TaskResult{
+				TaskID:    taskID,
+				ProjectID: a.ProjectID,
+				Status:    "ok",
+				Output:    json.RawMessage(stdoutBytes),
+				WorkerID:  a.WorkerID,
+			}
+		} else {
+			if taskResult.TaskID == "" {
+				taskResult.TaskID = taskID
+			}
+			taskResult.ProjectID = a.ProjectID
+			taskResult.WorkerID = a.WorkerID
+			if taskResult.Status == "" {
+				taskResult.Status = "ok"
+			}
+		}
+		fmt.Printf("📤 [Worker %s] Task %s completed in %v. Publishing result...\n", a.WorkerID, taskID, duration)
+	}
+
+	// Publish result to results.<project_id>
+	resBytes, err := json.Marshal(taskResult)
+	if err != nil {
+		return fmt.Errorf("failed to marshal task result: %w", err)
+	}
+
+	resultsSubj := transport.ResultsSubject(a.ProjectID)
+	if err := a.nc.Publish(resultsSubj, resBytes); err != nil {
+		return fmt.Errorf("failed to publish result to %s: %w", resultsSubj, err)
+	}
+
+	// JetStream ACK - deletes message from WorkQueue
+	if err := msg.Ack(); err != nil {
+		return fmt.Errorf("failed to ACK JetStream task message: %w", err)
+	}
+
 	return nil
 }

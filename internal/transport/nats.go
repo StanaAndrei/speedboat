@@ -49,6 +49,10 @@ func TasksSubject(projectID string) string { // subject used for publish/consume
 	return fmt.Sprintf("tasks.%s", projectID)
 }
 
+func ResultsSubject(projectID string) string {
+	return fmt.Sprintf("results.%s", projectID)
+}
+
 func AnnouncementsSubject() string { // subject for global project announcements
 	return "announcements"
 }

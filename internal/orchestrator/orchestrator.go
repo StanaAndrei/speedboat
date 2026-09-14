@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"speedboat/internal/builder"
@@ -165,6 +166,16 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	fmt.Printf("   ✓ Queued %d messages (%d tasks x %d redundancy) in WorkQueue\n",
 		totalTasks*cfg.Verification.Redundancy, totalTasks, cfg.Verification.Redundancy)
 
+	// 6. Collect Results & Consensus Verification
+	fmt.Printf("🔍 Step 5/6: Waiting for volunteer results on '%s' & verifying consensus...\n", transport.ResultsSubject(cfg.Name))
+	verifiedResults, err := o.collectAndVerifyResults(ctx, cfg, taskOrder)
+
+	if err != nil {
+		return fmt.Errorf("verification failed: %w", err)
+	}
+	if verifiedResults == nil {
+	}
+
 	return nil
 }
 
@@ -195,4 +206,68 @@ func (o *Orchestrator) runGenerator(ctx context.Context, cfg *protocol.ProjectCo
 	}
 	// fmt.Print(tasks[0])
 	return tasks, nil
+}
+
+func (o *Orchestrator) collectAndVerifyResults(
+	ctx context.Context,
+	cfg *protocol.ProjectConfig,
+	taskOrder []string,
+) (map[string]protocol.TaskResult, error) {
+	//totalDistinct := len(taskOrder)
+	threshold := cfg.Verification.ConsensusThreshold
+	if threshold <= 0 {
+		threshold = 1
+	}
+
+	var mtx sync.Mutex
+	// taskID -> canonicalOutput -> list of results with this output
+	//taskOutputs := make(map[string]map[string][]protocol.TaskResult)
+	verifiedResults := make(map[string]protocol.TaskResult)
+
+	doneCh := make(chan struct{})
+	//var doneOnce sync.Once
+	subj := transport.ResultsSubject(cfg.Name)
+	sub, err := o.nc.Subscribe(subj, func(msg *nats.Msg) {
+		var res protocol.TaskResult
+		if err := json.Unmarshal(msg.Data, &res); err != nil {
+			fmt.Printf("⚠️  [Master] Received invalid result payload on %s: %v\n", subj, err)
+			return
+		}
+
+		if res.TaskID == "" {
+			return
+		}
+		mtx.Lock()
+		defer mtx.Unlock()
+
+		fmt.Print(res)
+		fmt.Println()
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to %s: %w", subj, err)
+	}
+	defer sub.Unsubscribe()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-doneCh:
+		return verifiedResults, nil
+	}
+}
+
+func normalizeJSON(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return string(raw)
+	}
+	canonical, err := json.Marshal(v)
+	if err != nil {
+		return string(raw)
+	}
+	return string(canonical)
 }
