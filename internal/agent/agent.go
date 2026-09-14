@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"speedboat/internal/runtime"
 	"speedboat/internal/transport"
@@ -69,5 +71,63 @@ func (a *Agent) Run(ctx context.Context) error {
 	defer nc.Close()
 	a.nc = nc
 	a.js = js
+
+	// 3. Mk pull subscriber on workqueue
+	durableName := fmt.Sprintf("speedboat-workers-%s", a.ProjectID)
+	subj := transport.TasksSubject(a.ProjectID)
+	sub, err := js.PullSubscribe(subj, durableName)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to JetStream queue on %s: %w", subj, err)
+	}
+	defer sub.Unsubscribe()
+
+	fmt.Printf("⚡ Ready! Listening for work on '%s'...\n", subj)
+
+	tasksProcessed := 0
+	pulledAny := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("\n🛑 Agent shutting down gracefully...")
+			return nil
+		default:
+		}
+
+		if a.MaxTasks > 0 && tasksProcessed >= a.MaxTasks {
+			fmt.Printf("🏁 Reached max task limit (%d tasks). Exiting.\n", a.MaxTasks)
+			return nil
+		}
+
+		// Fetch 1 task message from JetStream WorkQueue
+		msgs, err := sub.Fetch(1, nats.MaxWait(2*time.Second))
+		if err != nil {
+			if errors.Is(err, nats.ErrTimeout) {
+				if a.Once && pulledAny {
+					fmt.Println("🏁 WorkQueue empty (--once specified). Exiting.")
+					return nil
+				}
+				continue // Wait and retry
+			}
+			time.Sleep(500 * time.Millisecond) // Transient error or reconnection
+			continue
+		}
+
+		if len(msgs) == 0 {
+			continue
+		}
+
+		msg := msgs[0]
+		pulledAny = true
+
+		if err := a.processTaskMessage(ctx, msg); err != nil {
+			fmt.Printf("❌ [Worker %s] Task processing error: %v\n", a.WorkerID, err)
+		} else {
+			tasksProcessed++
+		}
+	}
+}
+
+func (a *Agent) processTaskMessage(ctx context.Context, msg *nats.Msg) error {
 	return nil
 }
