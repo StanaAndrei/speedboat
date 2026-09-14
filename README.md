@@ -1,2 +1,4 @@
 # speedboat
-Boinc alt
+
+A modern hpc volunteer computing way using go.
+
