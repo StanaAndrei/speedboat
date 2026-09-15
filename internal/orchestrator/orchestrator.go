@@ -173,8 +173,16 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
 	}
-	if verifiedResults == nil {
+
+	// 7. Pipe Verified Results to Reducer
+	fmt.Printf("📊 Step 6/6: Piping verified batch to reducer (%s %s)...\n", cfg.Reducer.Runtime, cfg.Reducer.Source)
+	reducerOutput, err := o.runReducer(ctx, cfg, taskOrder, verifiedResults)
+	if err != nil {
+		return fmt.Errorf("reducer script failed: %w", err)
 	}
+
+	fmt.Println("\n🎉 Computation Complete! Reducer Output:")
+	fmt.Println(string(reducerOutput))
 
 	return nil
 }
@@ -213,7 +221,7 @@ func (o *Orchestrator) collectAndVerifyResults(
 	cfg *protocol.ProjectConfig,
 	taskOrder []string,
 ) (map[string]protocol.TaskResult, error) {
-	//totalDistinct := len(taskOrder)
+	totalDistinct := len(taskOrder)
 	threshold := cfg.Verification.ConsensusThreshold
 	if threshold <= 0 {
 		threshold = 1
@@ -221,11 +229,11 @@ func (o *Orchestrator) collectAndVerifyResults(
 
 	var mtx sync.Mutex
 	// taskID -> canonicalOutput -> list of results with this output
-	//taskOutputs := make(map[string]map[string][]protocol.TaskResult)
+	taskOutputs := make(map[string]map[string][]protocol.TaskResult)
 	verifiedResults := make(map[string]protocol.TaskResult)
 
 	doneCh := make(chan struct{})
-	//var doneOnce sync.Once
+	var doneOnce sync.Once
 	subj := transport.ResultsSubject(cfg.Name)
 	sub, err := o.nc.Subscribe(subj, func(msg *nats.Msg) {
 		var res protocol.TaskResult
@@ -240,8 +248,34 @@ func (o *Orchestrator) collectAndVerifyResults(
 		mtx.Lock()
 		defer mtx.Unlock()
 
-		fmt.Print(res)
-		fmt.Println()
+		// fmt.Print(res)
+		// fmt.Println()
+		if _, alreadyVerified := verifiedResults[res.TaskID]; alreadyVerified {
+			return
+		}
+
+		if res.Status != "ok" {
+			fmt.Printf("⚠️  [Master] Task %s returned status '%s': %s\n", res.TaskID, res.Status, res.Error)
+			return
+		}
+
+		normOutput := normalizeJSON(res.Output)
+		if taskOutputs[res.TaskID] == nil {
+			taskOutputs[res.TaskID] = make(map[string][]protocol.TaskResult)
+		}
+		taskOutputs[res.TaskID][normOutput] = append(taskOutputs[res.TaskID][normOutput], res)
+
+		matchCount := len(taskOutputs[res.TaskID][normOutput])
+		if matchCount >= threshold {
+			verifiedResults[res.TaskID] = res
+			fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches | Total Verified: %d/%d)\n",
+				res.TaskID, matchCount, threshold, len(verifiedResults), totalDistinct)
+			if len(verifiedResults) >= totalDistinct {
+				doneOnce.Do(func() {
+					close(doneCh)
+				})
+			}
+		}
 	})
 
 	if err != nil {
@@ -255,6 +289,54 @@ func (o *Orchestrator) collectAndVerifyResults(
 	case <-doneCh:
 		return verifiedResults, nil
 	}
+}
+
+func (o *Orchestrator) runReducer(
+	ctx context.Context,
+	cfg *protocol.ProjectConfig,
+	taskOrder []string,
+	verifiedResults map[string]protocol.TaskResult,
+) ([]byte, error) {
+	scriptPath := cfg.Reducer.Source
+	if !filepath.IsAbs(scriptPath) {
+		scriptPath = filepath.Join(o.ProjectDir, scriptPath)
+	}
+
+	runtimeBin := cfg.Reducer.Runtime
+	if runtimeBin == "" {
+		runtimeBin = "python3"
+	}
+
+	orderedList := make([]protocol.TaskResult, 0, len(taskOrder))
+	for _, taskID := range taskOrder {
+		if res, ok := verifiedResults[taskID]; ok {
+			orderedList = append(orderedList, res)
+		}
+	}
+
+	batch := protocol.ReducerBatch{
+		ProjectID: cfg.Name,
+		Results:   orderedList,
+	}
+	batchBytes, err := json.Marshal(batch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal reducer batch: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, runtimeBin, scriptPath)
+	cmd.Dir = o.ProjectDir
+	cmd.Stdin = bytes.NewReader(batchBytes)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("reducer execution failed: %w\nstderr: %s\nstdout: %s",
+			err, stderr.String(), stdout.String())
+	}
+
+	return stdout.Bytes(), nil
 }
 
 func normalizeJSON(raw json.RawMessage) string {

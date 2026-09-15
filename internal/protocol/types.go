@@ -62,6 +62,11 @@ type ProjectAnnouncement struct {
 	CreatedAt          int64  `json:"created_at,omitempty"`
 }
 
+type ReducerBatch struct { // aggregated, consensus-verified dataset passed to the reducer script
+	ProjectID string       `json:"project_id"`
+	Results   []TaskResult `json:"results"`
+}
+
 func LoadProjectConfig(projectDir string) (*ProjectConfig, error) {
 	candidates := []string{
 		filepath.Join(projectDir, "project.yaml"),
