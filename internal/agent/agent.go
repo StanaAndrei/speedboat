@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	"net"
 	"time"
 
 	"speedboat/internal/protocol"
@@ -30,15 +30,34 @@ type Agent struct {
 	engine runtime.Engine
 }
 
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err == nil {
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+				if ipNet.IP.To4() != nil {
+					return ipNet.IP.String()
+				}
+			}
+		}
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+				return ipNet.IP.String()
+			}
+		}
+	}
+	return "127.0.0.1"
+}
+
 func NewAgent(projectID, natsURL, runtimePref, workerID string, maxTasks int, once bool) *Agent {
 	if workerID == "" {
-		host, _ := os.Hostname()
-		if host == "" {
-			host = "agent"
+		ip := getLocalIP()
+		if ip == "" {
+			ip = "127.0.0.1"
 		}
 		randBytes := make([]byte, 4)
 		_, _ = rand.Read(randBytes)
-		workerID = fmt.Sprintf("%s-%s", host, hex.EncodeToString(randBytes))
+		workerID = fmt.Sprintf("%s-%s", ip, hex.EncodeToString(randBytes))
 	}
 
 	return &Agent{
