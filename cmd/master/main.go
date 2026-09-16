@@ -54,7 +54,7 @@ func main() {
 		}
 		// Invoke Orchestrator Lifecycle
 	case "build":
-		fmt.Println("Building artifacts... %s", cli.Build.ProjectDir)
+		fmt.Printf("Building artifacts... %s\n", cli.Build.ProjectDir)
 		// Invoke Builder Only
 
 	}

@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewAgentDefaultWorkerIDUsesIP(t *testing.T) {
-	ag := NewAgent("test-proj", "nats://localhost:4222", "auto", "", 10, true)
+	ag := NewAgent("test-proj", "nats://localhost:4222", "auto", "", 10, true, 30)
 	if ag == nil {
 		t.Fatal("expected non-nil agent")
 	}
@@ -26,8 +26,18 @@ func TestNewAgentDefaultWorkerIDUsesIP(t *testing.T) {
 
 func TestNewAgentCustomWorkerID(t *testing.T) {
 	customID := "custom-worker-123"
-	ag := NewAgent("test-proj", "nats://localhost:4222", "auto", customID, 10, true)
+	ag := NewAgent("test-proj", "nats://localhost:4222", "auto", customID, 10, true, 30)
 	if ag.WorkerID != customID {
 		t.Fatalf("expected WorkerID to be %s, got: %s", customID, ag.WorkerID)
+	}
+	if ag.IdleTimeout != 30 {
+		t.Fatalf("expected IdleTimeout to be 30, got: %d", ag.IdleTimeout)
+	}
+}
+
+func TestNewAgentIdleTimeout(t *testing.T) {
+	ag := NewAgent("test-proj", "nats://localhost:4222", "auto", "test-worker", 5, false, 45)
+	if ag.IdleTimeout != 45 {
+		t.Fatalf("expected IdleTimeout to be 45, got: %d", ag.IdleTimeout)
 	}
 }

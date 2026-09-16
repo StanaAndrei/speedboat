@@ -24,6 +24,7 @@ type Agent struct {
 	WorkerID          string
 	MaxTasks          int
 	Once              bool
+	IdleTimeout       int
 
 	nc     *nats.Conn
 	js     nats.JetStreamContext
@@ -49,7 +50,7 @@ func getLocalIP() string {
 	return "127.0.0.1"
 }
 
-func NewAgent(projectID, natsURL, runtimePref, workerID string, maxTasks int, once bool) *Agent {
+func NewAgent(projectID, natsURL, runtimePref, workerID string, maxTasks int, once bool, idleTimeout int) *Agent {
 	if workerID == "" {
 		ip := getLocalIP()
 		if ip == "" {
@@ -67,6 +68,7 @@ func NewAgent(projectID, natsURL, runtimePref, workerID string, maxTasks int, on
 		WorkerID:          workerID,
 		MaxTasks:          maxTasks,
 		Once:              once,
+		IdleTimeout:       idleTimeout,
 	}
 }
 
@@ -106,6 +108,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	tasksProcessed := 0
 	pulledAny := false
+	lastWorkTime := time.Now()
 
 	for {
 		select {
@@ -120,12 +123,33 @@ func (a *Agent) Run(ctx context.Context) error {
 			return nil
 		}
 
+		if a.IdleTimeout > 0 && time.Since(lastWorkTime) >= time.Duration(a.IdleTimeout)*time.Second {
+			fmt.Printf("🏁 Idle timeout reached (%ds without receiving work). Exiting.\n", a.IdleTimeout)
+			return nil
+		}
+
+		fetchWait := 2 * time.Second
+		if a.IdleTimeout > 0 {
+			remaining := time.Duration(a.IdleTimeout)*time.Second - time.Since(lastWorkTime)
+			if remaining <= 0 {
+				fmt.Printf("🏁 Idle timeout reached (%ds without receiving work). Exiting.\n", a.IdleTimeout)
+				return nil
+			}
+			if remaining < fetchWait {
+				fetchWait = remaining
+			}
+		}
+
 		// Fetch 1 task message from JetStream WorkQueue
-		msgs, err := sub.Fetch(1, nats.MaxWait(2*time.Second))
+		msgs, err := sub.Fetch(1, nats.MaxWait(fetchWait))
 		if err != nil {
 			if errors.Is(err, nats.ErrTimeout) {
 				if a.Once && pulledAny {
 					fmt.Println("🏁 WorkQueue empty (--once specified). Exiting.")
+					return nil
+				}
+				if a.IdleTimeout > 0 && time.Since(lastWorkTime) >= time.Duration(a.IdleTimeout)*time.Second {
+					fmt.Printf("🏁 Idle timeout reached (%ds without receiving work). Exiting.\n", a.IdleTimeout)
 					return nil
 				}
 				continue // Wait and retry
@@ -140,12 +164,14 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		msg := msgs[0]
 		pulledAny = true
+		lastWorkTime = time.Now()
 
 		if err := a.processTaskMessage(ctx, msg); err != nil {
 			fmt.Printf("❌ [Worker %s] Task processing error: %v\n", a.WorkerID, err)
 		} else {
 			tasksProcessed++
 		}
+		lastWorkTime = time.Now()
 	}
 }
 

@@ -19,8 +19,9 @@ type CLI struct {
 		NatsURL   string `help:"NATS server endpoint" default:"nats://localhost:4222" env:"NATS_URL"`
 		Runtime   string `short:"r" help:"Execution runtime engine (auto, docker, apptainer, wasm)" default:"auto" env:"RUNTIME"`
 		WorkerID  string `help:"Unique worker ID (defaults to host-random)" default:"" env:"WORKER_ID"`
-		MaxTasks  int    `help:"Maximum number of tasks to execute (0 for unlimited)" default:"0"`
-		Once      bool   `help:"Exit after task queue becomes empty" default:"false"`
+		MaxTasks    int    `help:"Maximum number of tasks to execute (0 for unlimited)" default:"0"`
+		Once        bool   `help:"Exit after task queue becomes empty" default:"false"`
+		IdleTimeout int    `short:"t" help:"Time in seconds to wait without receiving work before exiting (0 for unlimited)" default:"30" env:"IDLE_TIMEOUT"`
 	} `cmd:"" default:"1" help:"Run the volunteer agent worker."`
 
 	Info struct {
@@ -47,6 +48,7 @@ func main() {
 			cli.Run.WorkerID,
 			cli.Run.MaxTasks,
 			cli.Run.Once,
+			cli.Run.IdleTimeout,
 		)
 		if err := ag.Run(sigCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "Agent error: %v\n", err)
