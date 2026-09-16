@@ -1,0 +1,72 @@
+include:
+  - path: ../../examples/docker-compose.yaml
+
+services:
+  master:
+    image: speedboat-test-node:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: speedboat-test-master
+    hostname: master
+    networks:
+      default:
+        ipv4_address: 172.28.0.10
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${REPO_ROOT:-../..}:${REPO_ROOT:-/app}
+    environment:
+      - REPO_ROOT=${REPO_ROOT:-/app}
+      - NATS_URL=nats://nats:4222
+      - DOCKER_REGISTRY=localhost:5000
+    depends_on:
+      - nats
+      - registry
+    command: ["/bin/bash", "${REPO_ROOT:-/app}/tests/test_prime_cnt_cluster/run-master.sh"]
+
+  agent-1:
+    image: speedboat-test-node:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: speedboat-test-agent-1
+    hostname: agent-1
+    networks:
+      default:
+        ipv4_address: 172.28.0.11
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${REPO_ROOT:-../..}:${REPO_ROOT:-/app}
+    environment:
+      - REPO_ROOT=${REPO_ROOT:-/app}
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      - nats
+    command: ["/bin/bash", "${REPO_ROOT:-/app}/tests/test_prime_cnt_cluster/run-agent.sh", "agent-1"]
+
+  agent-2:
+    image: speedboat-test-node:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: speedboat-test-agent-2
+    hostname: agent-2
+    networks:
+      default:
+        ipv4_address: 172.28.0.12
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${REPO_ROOT:-../..}:${REPO_ROOT:-/app}
+    environment:
+      - REPO_ROOT=${REPO_ROOT:-/app}
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      - nats
+    command: ["/bin/bash", "${REPO_ROOT:-/app}/tests/test_prime_cnt_cluster/run-agent.sh", "agent-2"]
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

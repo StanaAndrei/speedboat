@@ -95,10 +95,25 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.nc = nc
 	a.js = js
 
-	// 3. Mk pull subscriber on workqueue
+	// 3. Mk pull subscriber on workqueue (wait for stream to be created)
 	durableName := fmt.Sprintf("speedboat-workers-%s", a.ProjectID)
 	subj := transport.TasksSubject(a.ProjectID)
-	sub, err := js.PullSubscribe(subj, durableName)
+	var sub *nats.Subscription
+	for retries := 0; retries < 60; retries++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		sub, err = js.PullSubscribe(subj, durableName)
+		if err == nil {
+			break
+		}
+		if retries == 0 {
+			fmt.Printf("⏳ Waiting for project '%s' stream to become available on NATS...\n", a.ProjectID)
+		}
+		time.Sleep(1 * time.Second)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to JetStream queue on %s: %w", subj, err)
 	}

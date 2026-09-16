@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+echo "============================================================"
+echo "🚀 Project Speedboat: Automated Multi-Node Cluster Test"
+echo "📁 Repository Root: ${REPO_ROOT}"
+echo "============================================================"
+
+# 1. Build Go static binaries
+echo -e "\n[1/4] 🔨 Compiling static binaries (speedboat-master, speedboat-agent)..."
+make -C "${REPO_ROOT}" build
+
+# 2. Cleanup any conflicting containers
+echo -e "\n[2/4] 🧹 Cleaning up any previous test or example containers..."
+docker stop speedboat-nats speedboat-registry speedboat-test-master speedboat-test-agent-1 speedboat-test-agent-2 2>/dev/null || true
+docker rm speedboat-nats speedboat-registry speedboat-test-master speedboat-test-agent-1 speedboat-test-agent-2 2>/dev/null || true
+REPO_ROOT="${REPO_ROOT}" docker compose -f "${SCRIPT_DIR}/docker-compose.yaml" down -v --remove-orphans 2>/dev/null || true
+
+# 3. Execute the multi-node test
+echo -e "\n[3/4] 🚢 Launching cluster test nodes:"
+echo "       - Master Node  (IP: 172.28.0.10)"
+echo "       - Agent Node 1 (IP: 172.28.0.11)"
+echo "       - Agent Node 2 (IP: 172.28.0.12)"
+echo "       - NATS Server  (IP: 172.28.0.2 / nats:4222)"
+echo "       - Registry     (IP: 172.28.0.3 / registry:5000)"
+echo "------------------------------------------------------------"
+
+if ! docker image inspect speedboat-test-node:latest >/dev/null 2>&1; then
+  echo "🔨 Building test node container image..."
+  docker build -t speedboat-test-node:latest "${SCRIPT_DIR}"
+fi
+
+export REPO_ROOT="${REPO_ROOT}"
+
+# Launch docker compose with abort-on-container-exit, tied to master's exit code
+set +e
+docker compose -f "${SCRIPT_DIR}/docker-compose.yaml" up \
+  --abort-on-container-exit \
+  --exit-code-from master
+MASTER_EXIT_CODE=$?
+set -e
+
+# 4. Teardown and Evaluation
+echo "------------------------------------------------------------"
+echo -e "\n[4/4] 📊 Evaluating test results..."
+
+if [ ${MASTER_EXIT_CODE} -eq 0 ]; then
+  echo "✅ TEST PASSED: Master completed successfully with consensus verification!"
+else
+  echo "❌ TEST FAILED: Master exited with code ${MASTER_EXIT_CODE}."
+fi
+
+echo -e "\n🧹 Cleaning up test cluster..."
+REPO_ROOT="${REPO_ROOT}" docker compose -f "${SCRIPT_DIR}/docker-compose.yaml" down -v --remove-orphans
+
+if [ ${MASTER_EXIT_CODE} -ne 0 ]; then
+  exit ${MASTER_EXIT_CODE}
+fi
+
+echo "🎉 All tests completed successfully!"
