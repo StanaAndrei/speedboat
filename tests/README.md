@@ -16,26 +16,36 @@ Rather than requiring heavy, slow, and fragile Docker-in-Docker (DinD) setups or
 
 | Test Directory | Description | Nodes | Redundancy & Consensus |
 | :--- | :--- | :--- | :--- |
-| `test_prime_cnt_cluster/` | Multi-node cluster running the C++ prime-counter task | 1 Master, 2 Agents, NATS, Registry | Redundancy: 3, Consensus: 2 |
+| `test_prime_cnt_cluster/` | Multi-node cluster running prime-counter with dynamically scalable agents | 1 Master, N Agents (configurable), NATS, Registry | Redundancy: 3, Consensus: 2 |
 
 ## Running Tests
 
 From the repository root:
 
 ```bash
-# Run all cluster tests
+# Run all cluster tests (both 2-agent and 3-agent suites)
 make test
 
-# Run the prime-counter multi-node cluster test specifically
-make test-prime-cnt-cluster
+# Run the 2-agent cluster test
+make test-cluster-2-agents
+
+# Run the 3-agent cluster test
+make test-cluster-3-agents
 
 # Clean up any lingering test containers and networks
 make test-clean
 ```
 
-You can also run the test directly:
+You can also run the test script directly with any desired number of agents:
 ```bash
-./tests/test_prime_cnt_cluster/test.sh
+# Run with 2 agents
+./tests/test_prime_cnt_cluster/test.sh 2
+
+# Run with 3 agents
+./tests/test_prime_cnt_cluster/test.sh 3
+
+# Run with 5 agents
+./tests/test_prime_cnt_cluster/test.sh 5
 ```
 
 ## Adding New Test Scenarios

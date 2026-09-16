@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKER_LABEL="${1:-agent}"
+WORKER_LABEL="${1:-$(hostname)}"
 echo "=== [${WORKER_LABEL}] Initializing ==="
 MY_IP=$(hostname -i | awk '{print $1}')
 echo "=== [${WORKER_LABEL}] Hostname: $(hostname), IP: ${MY_IP} ==="

@@ -9,23 +9,24 @@ echo "🚀 Project Speedboat: Automated Multi-Node Cluster Test"
 echo "📁 Repository Root: ${REPO_ROOT}"
 echo "============================================================"
 
+NUM_AGENTS="${1:-2}"
+
 # 1. Build Go static binaries
 echo -e "\n[1/4] 🔨 Compiling static binaries (speedboat-master, speedboat-agent)..."
 make -C "${REPO_ROOT}" build
 
 # 2. Cleanup any conflicting containers
 echo -e "\n[2/4] 🧹 Cleaning up any previous test or example containers..."
-docker stop speedboat-nats speedboat-registry speedboat-test-master speedboat-test-agent-1 speedboat-test-agent-2 2>/dev/null || true
-docker rm speedboat-nats speedboat-registry speedboat-test-master speedboat-test-agent-1 speedboat-test-agent-2 2>/dev/null || true
+docker stop speedboat-nats speedboat-registry speedboat-test-master $(docker ps -q --filter "name=agent") 2>/dev/null || true
+docker rm -f speedboat-nats speedboat-registry speedboat-test-master $(docker ps -aq --filter "name=agent") 2>/dev/null || true
 REPO_ROOT="${REPO_ROOT}" docker compose -f "${SCRIPT_DIR}/docker-compose.yaml" down -v --remove-orphans 2>/dev/null || true
 
 # 3. Execute the multi-node test
 echo -e "\n[3/4] 🚢 Launching cluster test nodes:"
-echo "       - Master Node  (IP: 172.28.0.10)"
-echo "       - Agent Node 1 (IP: 172.28.0.11)"
-echo "       - Agent Node 2 (IP: 172.28.0.12)"
-echo "       - NATS Server  (IP: 172.28.0.2 / nats:4222)"
-echo "       - Registry     (IP: 172.28.0.3 / registry:5000)"
+echo "       - Master Node   (IP: 172.28.0.10)"
+echo "       - Agent Nodes   (${NUM_AGENTS} workers dynamically allocated on 172.28.0.0/16)"
+echo "       - NATS Server   (IP: 172.28.0.2 / nats:4222)"
+echo "       - Registry      (IP: 172.28.0.3 / registry:5000)"
 echo "------------------------------------------------------------"
 
 if ! docker image inspect speedboat-test-node:latest >/dev/null 2>&1; then
@@ -38,6 +39,7 @@ export REPO_ROOT="${REPO_ROOT}"
 # Launch docker compose with abort-on-container-exit, tied to master's exit code
 set +e
 docker compose -f "${SCRIPT_DIR}/docker-compose.yaml" up \
+  --scale agent="${NUM_AGENTS}" \
   --abort-on-container-exit \
   --exit-code-from master
 MASTER_EXIT_CODE=$?
