@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -131,6 +132,12 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 
 	// Push task messages with redundancy
 	taskOrder := make([]string, 0, totalTasks)
+	redundancy := cfg.Verification.Redundancy
+	if redundancy <= 0 {
+		redundancy = 1
+	}
+
+	taskMessages := make([][]byte, 0, totalTasks*redundancy)
 	for idx, rawTask := range rawTasks {
 		var taskObj map[string]any
 		if err := json.Unmarshal(rawTask, &taskObj); err != nil {
@@ -152,15 +159,19 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			return fmt.Errorf("failed to marshal task %s: %w", taskID, err)
 		}
 
-		// Push redundancy copies to JetStream WorkQueue
-		redundancy := cfg.Verification.Redundancy
-		if redundancy <= 0 {
-			redundancy = 1
-		}
 		for r := 0; r < redundancy; r++ {
-			if err := transport.PublishTask(js, cfg.Name, augmentedBytes); err != nil {
-				return fmt.Errorf("failed to publish task %s (replica %d): %w", taskID, r, err)
-			}
+			taskMessages = append(taskMessages, augmentedBytes)
+		}
+	}
+
+	// Randomize task order before publishing
+	rand.Shuffle(len(taskMessages), func(i, j int) {
+		taskMessages[i], taskMessages[j] = taskMessages[j], taskMessages[i]
+	})
+
+	for _, msgBytes := range taskMessages {
+		if err := transport.PublishTask(js, cfg.Name, msgBytes); err != nil {
+			return fmt.Errorf("failed to publish task: %w", err)
 		}
 	}
 	fmt.Printf("   ✓ Queued %d messages (%d tasks x %d redundancy) in WorkQueue\n",
