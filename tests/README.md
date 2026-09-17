@@ -32,9 +32,28 @@ make test-cluster-2-agents
 # Run the 3-agent cluster test
 make test-cluster-3-agents
 
+# Run Master-only mode (waits for manual agent booting)
+make test-master-only
+
 # Clean up any lingering test containers and networks
 make test-clean
 ```
+
+### Manual Agent Testing Flow
+To test manual volunteer onboarding step-by-step:
+1. In Terminal 1, start the master:
+   ```bash
+   make test-master-only
+   ```
+2. In Terminal 2, boot up volunteer agents:
+   ```bash
+   # Boot 1 agent interactively (live streaming logs)
+   make boot-agent
+
+   # OR boot 2 agents in background
+   make add-agents COUNT=2
+   ```
+3. Observe the master reach consensus, run the reducer, and exit automatically once computation finishes!
 
 You can also run the test script directly with any desired number of agents:
 ```bash
@@ -46,6 +65,33 @@ You can also run the test script directly with any desired number of agents:
 
 # Run with 5 agents
 ./tests/test_prime_cnt_cluster/test.sh 5
+```
+
+## Managing & Booting Agent VMs Dynamically
+
+You can easily boot up, inspect, and scale individual agent VMs on demand:
+
+```bash
+# Boot an agent VM interactively (foreground with live logs)
+make boot-agent
+
+# Boot an agent VM in background (detached mode, prints assigned IP)
+make add-agent
+
+# Boot multiple agent VMs in background (e.g. 3 agents)
+make add-agents COUNT=3
+
+# List all active agent VMs and their container IPs
+make list-agents
+
+# Stop all standalone agent VMs
+make stop-agents
+```
+
+You can customize parameters via environment variables:
+```bash
+# Boot an agent pointing to a custom project or NATS endpoint
+make boot-agent PROJECT_ID=my-project NATS_URL=nats://localhost:4222 RUNTIME=docker
 ```
 
 ## Adding New Test Scenarios

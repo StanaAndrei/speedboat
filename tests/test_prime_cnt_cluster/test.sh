@@ -23,11 +23,24 @@ REPO_ROOT="${REPO_ROOT}" docker compose -f "${SCRIPT_DIR}/docker-compose.yaml" d
 
 # 3. Execute the multi-node test
 echo -e "\n[3/4] 🚢 Launching cluster test nodes:"
-echo "       - Master Node   (IP: 172.28.0.10)"
-echo "       - Agent Nodes   (${NUM_AGENTS} workers dynamically allocated on 172.28.0.0/16)"
-echo "       - NATS Server   (IP: 172.28.0.2 / nats:4222)"
-echo "       - Registry      (IP: 172.28.0.3 / registry:5000)"
-echo "------------------------------------------------------------"
+if [ "${NUM_AGENTS}" -eq 0 ]; then
+  echo "       - Master Node   (IP: 172.28.0.10)"
+  echo "       - Agent Nodes   (0 auto-started; manual mode)"
+  echo "       - NATS Server   (IP: 172.28.0.2 / nats:4222)"
+  echo "       - Registry      (IP: 172.28.0.3 / registry:5000)"
+  echo "------------------------------------------------------------"
+  echo "💡 Master will start and wait for volunteer agents to join."
+  echo "💡 Run either of the following in another terminal to join:"
+  echo "      make boot-agent          # boot 1 agent in foreground"
+  echo "   OR make add-agents COUNT=2  # boot 2 agents in background"
+  echo "------------------------------------------------------------"
+else
+  echo "       - Master Node   (IP: 172.28.0.10)"
+  echo "       - Agent Nodes   (${NUM_AGENTS} workers dynamically allocated on 172.28.0.0/16)"
+  echo "       - NATS Server   (IP: 172.28.0.2 / nats:4222)"
+  echo "       - Registry      (IP: 172.28.0.3 / registry:5000)"
+  echo "------------------------------------------------------------"
+fi
 
 if ! docker image inspect speedboat-test-node:latest >/dev/null 2>&1; then
   echo "🔨 Building test node container image..."
@@ -56,6 +69,8 @@ else
 fi
 
 echo -e "\n🧹 Cleaning up test cluster..."
+docker stop $(docker ps -q --filter "name=speedboat-agent") 2>/dev/null || true
+docker rm -f $(docker ps -aq --filter "name=speedboat-agent") 2>/dev/null || true
 REPO_ROOT="${REPO_ROOT}" docker compose -f "${SCRIPT_DIR}/docker-compose.yaml" down -v --remove-orphans
 
 if [ ${MASTER_EXIT_CODE} -ne 0 ]; then

@@ -35,6 +35,7 @@ services:
     environment:
       - REPO_ROOT=${REPO_ROOT:-/app}
       - NATS_URL=nats://nats:4222
+      - ONCE=true
     depends_on:
       - nats
     command: ["/bin/bash", "${REPO_ROOT:-/app}/tests/test_prime_cnt_cluster/run-agent.sh"]

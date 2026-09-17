@@ -17,11 +17,17 @@ done
 echo "=== [${WORKER_LABEL}] NATS is ready! Starting agent worker... ==="
 
 AGENT_BIN="${REPO_ROOT:-/app}/build/speedboat-agent"
+PROJECT_ID="${PROJECT_ID:-prime-counter}"
+RUNTIME="${RUNTIME:-docker}"
+ONCE_FLAG=""
+if [ "${ONCE:-false}" = "true" ]; then
+  ONCE_FLAG="--once"
+fi
 
-# Run agent with once flag, retrying on transient connection/stream errors
+# Run agent, retrying on transient connection/stream errors
 MAX_RETRIES=30
 for ((i=1; i<=MAX_RETRIES; i++)); do
-  if "${AGENT_BIN}" run -p prime-counter --nats-url "${NATS_ENDPOINT}" --runtime docker --once; then
+  if "${AGENT_BIN}" run -p "${PROJECT_ID}" --nats-url "${NATS_ENDPOINT}" --runtime "${RUNTIME}" ${ONCE_FLAG}; then
     echo "=== [${WORKER_LABEL}] Agent completed successfully! ==="
     exit 0
   fi
