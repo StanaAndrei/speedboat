@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand/v2"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +17,13 @@ import (
 
 	"github.com/nats-io/nats.go"
 )
+
+type managedTask struct {
+	taskID       string
+	rawBytes     []byte
+	assignedIPs  map[string]time.Time
+	completedIPs map[string]bool
+}
 
 type Orchestrator struct {
 	ProjectDir string
@@ -130,14 +137,11 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 	}()
 
-	// Push task messages with redundancy
+	// Initialize task list and dispatcher
 	taskOrder := make([]string, 0, totalTasks)
-	redundancy := cfg.Verification.Redundancy
-	if redundancy <= 0 {
-		redundancy = 1
-	}
+	tasksList := make([]*managedTask, 0, totalTasks)
+	tasksMap := make(map[string]*managedTask)
 
-	taskMessages := make([][]byte, 0, totalTasks*redundancy)
 	for idx, rawTask := range rawTasks {
 		var taskObj map[string]any
 		if err := json.Unmarshal(rawTask, &taskObj); err != nil {
@@ -159,27 +163,103 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			return fmt.Errorf("failed to marshal task %s: %w", taskID, err)
 		}
 
-		for r := 0; r < redundancy; r++ {
-			taskMessages = append(taskMessages, augmentedBytes)
+		mt := &managedTask{
+			taskID:       taskID,
+			rawBytes:     augmentedBytes,
+			assignedIPs:  make(map[string]time.Time),
+			completedIPs: make(map[string]bool),
 		}
+		tasksList = append(tasksList, mt)
+		tasksMap[taskID] = mt
 	}
 
-	// Randomize task order before publishing
-	rand.Shuffle(len(taskMessages), func(i, j int) {
-		taskMessages[i], taskMessages[j] = taskMessages[j], taskMessages[i]
+	var (
+		taskMu sync.Mutex
+		isDone bool
+	)
+
+	reqSub, err := nc.Subscribe(transport.TaskRequestSubject(cfg.Name), func(msg *nats.Msg) {
+		var req protocol.TaskRequest
+		if err := json.Unmarshal(msg.Data, &req); err != nil {
+			fmt.Printf("⚠️  [Master] Received invalid task request: %v\n", err)
+			return
+		}
+
+		workerIP := getWorkerIP(req.IP, req.WorkerID)
+
+		taskMu.Lock()
+		defer taskMu.Unlock()
+
+		if req.CompletedTaskID != "" {
+			if mt, ok := tasksMap[req.CompletedTaskID]; ok {
+				delete(mt.assignedIPs, workerIP)
+				mt.completedIPs[workerIP] = true
+			}
+		}
+
+		if isDone {
+			respBytes, _ := json.Marshal(protocol.TaskResponse{Status: "completed"})
+			_ = msg.Respond(respBytes)
+			return
+		}
+
+		redundancy := cfg.Verification.Redundancy
+		if redundancy <= 0 {
+			redundancy = 1
+		}
+
+		// Clear any existing in-flight assignment for this workerIP
+		for _, mt := range tasksList {
+			delete(mt.assignedIPs, workerIP)
+		}
+
+		var selected *managedTask
+		for _, mt := range tasksList {
+			// Never send a task if this IP already completed it
+			if mt.completedIPs[workerIP] {
+				continue
+			}
+
+			// Count active assignments to other IPs
+			activeOther := 0
+			for otherIP, t := range mt.assignedIPs {
+				if otherIP != workerIP && time.Since(t) < 60*time.Second && !mt.completedIPs[otherIP] {
+					activeOther++
+				}
+			}
+
+			if len(mt.completedIPs)+activeOther >= redundancy {
+				continue
+			}
+
+			selected = mt
+			selected.assignedIPs[workerIP] = time.Now()
+			break
+		}
+
+		if selected != nil {
+			respBytes, _ := json.Marshal(protocol.TaskResponse{
+				Status: "ok",
+				Task:   selected.rawBytes,
+			})
+			_ = msg.Respond(respBytes)
+			return
+		}
+
+		respBytes, _ := json.Marshal(protocol.TaskResponse{Status: "no_tasks"})
+		_ = msg.Respond(respBytes)
 	})
-
-	for _, msgBytes := range taskMessages {
-		if err := transport.PublishTask(js, cfg.Name, msgBytes); err != nil {
-			return fmt.Errorf("failed to publish task: %w", err)
-		}
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to task requests: %w", err)
 	}
-	fmt.Printf("   ✓ Queued %d messages (%d tasks x %d redundancy) in WorkQueue\n",
-		totalTasks*cfg.Verification.Redundancy, totalTasks, cfg.Verification.Redundancy)
+	defer reqSub.Unsubscribe()
+
+	fmt.Printf("   ✓ Initialized dispatcher for %d distinct tasks (redundancy %d)\n",
+		totalTasks, cfg.Verification.Redundancy)
 
 	// 6. Collect Results & Consensus Verification
 	fmt.Printf("🔍 Step 5/6: Waiting for volunteer results on '%s' & verifying consensus...\n", transport.ResultsSubject(cfg.Name))
-	verifiedResults, err := o.collectAndVerifyResults(ctx, cfg, taskOrder)
+	verifiedResults, err := o.collectAndVerifyResults(ctx, cfg, taskOrder, &taskMu, tasksMap, &isDone)
 
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
@@ -231,16 +311,28 @@ func (o *Orchestrator) collectAndVerifyResults(
 	ctx context.Context,
 	cfg *protocol.ProjectConfig,
 	taskOrder []string,
+	taskMu *sync.Mutex,
+	tasksMap map[string]*managedTask,
+	isDone *bool,
 ) (map[string]protocol.TaskResult, error) {
 	totalDistinct := len(taskOrder)
+	reqRedundancy := cfg.Verification.Redundancy
+	if reqRedundancy <= 0 {
+		reqRedundancy = 1
+	}
 	threshold := cfg.Verification.ConsensusThreshold
 	if threshold <= 0 {
 		threshold = 1
+	}
+	if threshold > reqRedundancy {
+		threshold = reqRedundancy
 	}
 
 	var mtx sync.Mutex
 	// taskID -> canonicalOutput -> list of results with this output
 	taskOutputs := make(map[string]map[string][]protocol.TaskResult)
+	// taskID -> workerIP -> bool (guarantees just one workload per IP of an agent)
+	taskIPs := make(map[string]map[string]bool)
 	verifiedResults := make(map[string]protocol.TaskResult)
 
 	doneCh := make(chan struct{})
@@ -256,11 +348,21 @@ func (o *Orchestrator) collectAndVerifyResults(
 		if res.TaskID == "" {
 			return
 		}
+
+		workerIP := getWorkerIP(res.IP, res.WorkerID)
+
+		taskMu.Lock()
+		if mt, ok := tasksMap[res.TaskID]; ok {
+			delete(mt.assignedIPs, workerIP)
+			if res.Status == "ok" {
+				mt.completedIPs[workerIP] = true
+			}
+		}
+		taskMu.Unlock()
+
 		mtx.Lock()
 		defer mtx.Unlock()
 
-		// fmt.Print(res)
-		// fmt.Println()
 		if _, alreadyVerified := verifiedResults[res.TaskID]; alreadyVerified {
 			return
 		}
@@ -270,6 +372,15 @@ func (o *Orchestrator) collectAndVerifyResults(
 			return
 		}
 
+		if taskIPs[res.TaskID] == nil {
+			taskIPs[res.TaskID] = make(map[string]bool)
+		}
+		if taskIPs[res.TaskID][workerIP] {
+			fmt.Printf("⚠️  [Master] Duplicate workload result for task %s from same IP %s ignored\n", res.TaskID, workerIP)
+			return
+		}
+		taskIPs[res.TaskID][workerIP] = true
+
 		normOutput := normalizeJSON(res.Output)
 		if taskOutputs[res.TaskID] == nil {
 			taskOutputs[res.TaskID] = make(map[string][]protocol.TaskResult)
@@ -277,11 +388,16 @@ func (o *Orchestrator) collectAndVerifyResults(
 		taskOutputs[res.TaskID][normOutput] = append(taskOutputs[res.TaskID][normOutput], res)
 
 		matchCount := len(taskOutputs[res.TaskID][normOutput])
-		if matchCount >= threshold {
+		distinctIPCount := len(taskIPs[res.TaskID])
+
+		if distinctIPCount >= reqRedundancy && matchCount >= threshold {
 			verifiedResults[res.TaskID] = res
-			fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches | Total Verified: %d/%d)\n",
-				res.TaskID, matchCount, threshold, len(verifiedResults), totalDistinct)
+			fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d/%d distinct IPs | Total Verified: %d/%d)\n",
+				res.TaskID, matchCount, threshold, distinctIPCount, reqRedundancy, len(verifiedResults), totalDistinct)
 			if len(verifiedResults) >= totalDistinct {
+				taskMu.Lock()
+				*isDone = true
+				taskMu.Unlock()
 				doneOnce.Do(func() {
 					close(doneCh)
 				})
@@ -364,3 +480,15 @@ func normalizeJSON(raw json.RawMessage) string {
 	}
 	return string(canonical)
 }
+
+func getWorkerIP(resIP, workerID string) string {
+	if resIP != "" {
+		return resIP
+	}
+	parts := strings.Split(workerID, "-")
+	if len(parts) > 0 && parts[0] != "" {
+		return parts[0]
+	}
+	return workerID
+}
+

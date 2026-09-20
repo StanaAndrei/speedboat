@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -22,6 +21,7 @@ type Agent struct {
 	NatsURL           string
 	RuntimePreference string
 	WorkerID          string
+	IP                string
 	MaxTasks          int
 	Once              bool
 	IdleTimeout       int
@@ -51,11 +51,11 @@ func getLocalIP() string {
 }
 
 func NewAgent(projectID, natsURL, runtimePref, workerID string, maxTasks int, once bool, idleTimeout int) *Agent {
+	ip := getLocalIP()
+	if ip == "" {
+		ip = "127.0.0.1"
+	}
 	if workerID == "" {
-		ip := getLocalIP()
-		if ip == "" {
-			ip = "127.0.0.1"
-		}
 		randBytes := make([]byte, 4)
 		_, _ = rand.Read(randBytes)
 		workerID = fmt.Sprintf("%s-%s", ip, hex.EncodeToString(randBytes))
@@ -66,6 +66,7 @@ func NewAgent(projectID, natsURL, runtimePref, workerID string, maxTasks int, on
 		NatsURL:           natsURL,
 		RuntimePreference: runtimePref,
 		WorkerID:          workerID,
+		IP:                ip,
 		MaxTasks:          maxTasks,
 		Once:              once,
 		IdleTimeout:       idleTimeout,
@@ -95,35 +96,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.nc = nc
 	a.js = js
 
-	// 3. Mk pull subscriber on workqueue (wait for stream to be created)
-	durableName := fmt.Sprintf("speedboat-workers-%s", a.ProjectID)
-	subj := transport.TasksSubject(a.ProjectID)
-	var sub *nats.Subscription
-	for retries := 0; retries < 60; retries++ {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		sub, err = js.PullSubscribe(subj, durableName)
-		if err == nil {
-			break
-		}
-		if retries == 0 {
-			fmt.Printf("⏳ Waiting for project '%s' stream to become available on NATS...\n", a.ProjectID)
-		}
-		time.Sleep(1 * time.Second)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to JetStream queue on %s: %w", subj, err)
-	}
-	defer sub.Unsubscribe()
-
-	fmt.Printf("⚡ Ready! Listening for work on '%s'...\n", subj)
-
 	tasksProcessed := 0
-	pulledAny := false
 	lastWorkTime := time.Now()
+	lastCompletedTaskID := ""
+	reqSubj := transport.TaskRequestSubject(a.ProjectID)
+
+	fmt.Printf("⚡ Ready! Requesting work on '%s' (Worker: %s, IP: %s)...\n", reqSubj, a.WorkerID, a.IP)
 
 	for {
 		select {
@@ -143,58 +121,80 @@ func (a *Agent) Run(ctx context.Context) error {
 			return nil
 		}
 
-		fetchWait := 2 * time.Second
+		reqWait := 2 * time.Second
 		if a.IdleTimeout > 0 {
 			remaining := time.Duration(a.IdleTimeout)*time.Second - time.Since(lastWorkTime)
 			if remaining <= 0 {
 				fmt.Printf("🏁 Idle timeout reached (%ds without receiving work). Exiting.\n", a.IdleTimeout)
 				return nil
 			}
-			if remaining < fetchWait {
-				fetchWait = remaining
+			if remaining < reqWait {
+				reqWait = remaining
 			}
 		}
 
-		// Fetch 1 task message from JetStream WorkQueue
-		msgs, err := sub.Fetch(1, nats.MaxWait(fetchWait))
+		req := protocol.TaskRequest{
+			ProjectID:       a.ProjectID,
+			WorkerID:        a.WorkerID,
+			IP:              a.IP,
+			CompletedTaskID: lastCompletedTaskID,
+		}
+		reqBytes, _ := json.Marshal(req)
+
+		respMsg, err := nc.Request(reqSubj, reqBytes, reqWait)
 		if err != nil {
-			if errors.Is(err, nats.ErrTimeout) {
-				if a.Once && pulledAny {
-					fmt.Println("🏁 WorkQueue empty (--once specified). Exiting.")
-					return nil
-				}
-				if a.IdleTimeout > 0 && time.Since(lastWorkTime) >= time.Duration(a.IdleTimeout)*time.Second {
-					fmt.Printf("🏁 Idle timeout reached (%ds without receiving work). Exiting.\n", a.IdleTimeout)
-					return nil
-				}
-				continue // Wait and retry
+			if a.IdleTimeout > 0 && time.Since(lastWorkTime) >= time.Duration(a.IdleTimeout)*time.Second {
+				fmt.Printf("🏁 Idle timeout reached (%ds without receiving work). Exiting.\n", a.IdleTimeout)
+				return nil
 			}
-			time.Sleep(500 * time.Millisecond) // Transient error or reconnection
+			time.Sleep(500 * time.Millisecond)
 			continue
 		}
 
-		if len(msgs) == 0 {
+		var resp protocol.TaskResponse
+		if err := json.Unmarshal(respMsg.Data, &resp); err != nil {
+			time.Sleep(500 * time.Millisecond)
 			continue
 		}
 
-		msg := msgs[0]
-		pulledAny = true
-		lastWorkTime = time.Now()
-
-		if err := a.processTaskMessage(ctx, msg); err != nil {
-			fmt.Printf("❌ [Worker %s] Task processing error: %v\n", a.WorkerID, err)
-		} else {
-			tasksProcessed++
+		if resp.Status == "completed" {
+			fmt.Println("🏁 Project completed. Exiting.")
+			return nil
 		}
-		lastWorkTime = time.Now()
+
+		if resp.Status == "no_tasks" {
+			if a.IdleTimeout > 0 && time.Since(lastWorkTime) >= time.Duration(a.IdleTimeout)*time.Second {
+				fmt.Printf("🏁 Idle timeout reached (%ds without receiving work). Exiting.\n", a.IdleTimeout)
+				return nil
+			}
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		if resp.Status == "ok" && len(resp.Task) > 0 {
+			lastWorkTime = time.Now()
+			taskID, err := a.processTaskData(ctx, resp.Task)
+			if err != nil {
+				fmt.Printf("❌ [Worker %s] Task processing error: %v\n", a.WorkerID, err)
+			} else {
+				tasksProcessed++
+				lastCompletedTaskID = taskID
+			}
+			lastWorkTime = time.Now()
+		}
 	}
 }
 
 func (a *Agent) processTaskMessage(ctx context.Context, msg *nats.Msg) error {
+	defer msg.Ack()
+	_, err := a.processTaskData(ctx, msg.Data)
+	return err
+}
+
+func (a *Agent) processTaskData(ctx context.Context, data []byte) (string, error) {
 	var task protocol.Task
-	if err := json.Unmarshal(msg.Data, &task); err != nil {
-		_ = msg.Ack()
-		return fmt.Errorf("unmarshal task JSON failed: %w", err)
+	if err := json.Unmarshal(data, &task); err != nil {
+		return "", fmt.Errorf("unmarshal task JSON failed: %w", err)
 	}
 
 	taskID := task.TaskID
@@ -217,7 +217,7 @@ func (a *Agent) processTaskMessage(ctx context.Context, msg *nats.Msg) error {
 	}
 
 	// Execute container logic via stdin -> stdout
-	stdoutBytes, execErr := a.engine.Execute(ctx, image, msg.Data)
+	stdoutBytes, execErr := a.engine.Execute(ctx, image, data)
 	duration := time.Since(startTime)
 
 	var taskResult protocol.TaskResult
@@ -229,6 +229,7 @@ func (a *Agent) processTaskMessage(ctx context.Context, msg *nats.Msg) error {
 			Status:    "error",
 			Error:     execErr.Error(),
 			WorkerID:  a.WorkerID,
+			IP:        a.IP,
 		}
 	} else {
 		// Try parsing stdout as standard TaskResult JSON
@@ -240,6 +241,7 @@ func (a *Agent) processTaskMessage(ctx context.Context, msg *nats.Msg) error {
 				Status:    "ok",
 				Output:    json.RawMessage(stdoutBytes),
 				WorkerID:  a.WorkerID,
+				IP:        a.IP,
 			}
 		} else {
 			if taskResult.TaskID == "" {
@@ -247,6 +249,7 @@ func (a *Agent) processTaskMessage(ctx context.Context, msg *nats.Msg) error {
 			}
 			taskResult.ProjectID = a.ProjectID
 			taskResult.WorkerID = a.WorkerID
+			taskResult.IP = a.IP
 			if taskResult.Status == "" {
 				taskResult.Status = "ok"
 			}
@@ -257,18 +260,14 @@ func (a *Agent) processTaskMessage(ctx context.Context, msg *nats.Msg) error {
 	// Publish result to results.<project_id>
 	resBytes, err := json.Marshal(taskResult)
 	if err != nil {
-		return fmt.Errorf("failed to marshal task result: %w", err)
+		return taskID, fmt.Errorf("failed to marshal task result: %w", err)
 	}
 
 	resultsSubj := transport.ResultsSubject(a.ProjectID)
 	if err := a.nc.Publish(resultsSubj, resBytes); err != nil {
-		return fmt.Errorf("failed to publish result to %s: %w", resultsSubj, err)
+		return taskID, fmt.Errorf("failed to publish result to %s: %w", resultsSubj, err)
 	}
+	_ = a.nc.Flush()
 
-	// JetStream ACK - deletes message from WorkQueue
-	if err := msg.Ack(); err != nil {
-		return fmt.Errorf("failed to ACK JetStream task message: %w", err)
-	}
-
-	return nil
+	return taskID, nil
 }

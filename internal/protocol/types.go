@@ -48,6 +48,7 @@ type TaskResult struct {
 	Output    json.RawMessage `json:"output,omitempty"`
 	Error     string          `json:"error,omitempty"`
 	WorkerID  string          `json:"worker_id,omitempty"`
+	IP        string          `json:"ip,omitempty"`
 }
 
 type ProjectAnnouncement struct {
@@ -65,6 +66,18 @@ type ProjectAnnouncement struct {
 type ReducerBatch struct { // aggregated, consensus-verified dataset passed to the reducer script
 	ProjectID string       `json:"project_id"`
 	Results   []TaskResult `json:"results"`
+}
+
+type TaskRequest struct {
+	ProjectID       string `json:"project_id"`
+	WorkerID        string `json:"worker_id"`
+	IP              string `json:"ip"`
+	CompletedTaskID string `json:"completed_task_id,omitempty"`
+}
+
+type TaskResponse struct {
+	Status string          `json:"status"` // "ok", "no_tasks", "completed"
+	Task   json.RawMessage `json:"task,omitempty"`
 }
 
 func LoadProjectConfig(projectDir string) (*ProjectConfig, error) {

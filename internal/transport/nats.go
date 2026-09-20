@@ -49,6 +49,10 @@ func TasksSubject(projectID string) string { // subject used for publish/consume
 	return fmt.Sprintf("tasks.%s", projectID)
 }
 
+func TaskRequestSubject(projectID string) string {
+	return fmt.Sprintf("requests.%s", projectID)
+}
+
 func ResultsSubject(projectID string) string {
 	return fmt.Sprintf("results.%s", projectID)
 }
@@ -67,7 +71,7 @@ func EnsureTaskStream(js nats.JetStreamContext, projectID string) (*nats.StreamI
 	subj := TasksSubject(projectID)
 	streamCfg := &nats.StreamConfig{
 		Name:      streamName,
-		Subjects:  []string{subj, subj + ".*"},
+		Subjects:  []string{subj},
 		Retention: nats.WorkQueuePolicy,
 		Storage:   nats.MemoryStorage,
 		MaxAge:    24 * time.Hour,
