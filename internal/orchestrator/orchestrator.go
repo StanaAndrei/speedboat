@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -172,6 +173,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		tasksList = append(tasksList, mt)
 		tasksMap[taskID] = mt
 	}
+
+	rand.Shuffle(len(tasksList), func(i, j int) {
+		tasksList[i], tasksList[j] = tasksList[j], tasksList[i]
+	})
 
 	var (
 		taskMu sync.Mutex
