@@ -1,2 +1,5 @@
 build/*
 !build/.gitkeep
+
+examples/master.db
+*.db

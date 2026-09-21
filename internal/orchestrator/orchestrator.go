@@ -14,6 +14,7 @@ import (
 
 	"speedboat/internal/builder"
 	"speedboat/internal/protocol"
+	"speedboat/internal/store"
 	"speedboat/internal/transport"
 
 	"github.com/nats-io/nats.go"
@@ -32,15 +33,21 @@ type Orchestrator struct {
 	Registry   string
 	NoBuild    bool
 	Timeout    time.Duration
+	DBPath     string
 	Config     *protocol.ProjectConfig
 	nc         *nats.Conn
 	js         nats.JetStreamContext
+	Store      store.Store
 }
 
-func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild bool) *Orchestrator {
+func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild bool, dbPath ...string) *Orchestrator {
 	absDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		absDir = projectDir
+	}
+	db := "speedboat.db"
+	if len(dbPath) > 0 && dbPath[0] != "" {
+		db = dbPath[0]
 	}
 	return &Orchestrator{
 		ProjectDir: absDir,
@@ -48,6 +55,7 @@ func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild
 		Registry:   registry,
 		NoBuild:    noBuild,
 		Timeout:    0, // unlimited by default
+		DBPath:     db,
 	}
 }
 
@@ -97,7 +105,18 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to ensure task stream: %w", err)
 	}
 
-	// 4. Run task generator
+	// 4. Initialize persistent store
+	if o.Store == nil {
+		fmt.Printf("💾 Initializing persistent store at %s...\n", o.DBPath)
+		dbStore, err := store.NewBboltStore(o.DBPath)
+		if err != nil {
+			return fmt.Errorf("failed to initialize store at %s: %w", o.DBPath, err)
+		}
+		defer dbStore.Close()
+		o.Store = dbStore
+	}
+
+	// 5. Run task generator
 	fmt.Printf("⚙️  Step 3/6: Running generator script (%s %s)...\n", cfg.Generator.Runtime, cfg.Generator.Source)
 	rawTasks, err := o.runGenerator(ctx, cfg)
 	if err != nil {
@@ -109,7 +128,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	}
 	fmt.Printf("   ✓ Generated %d unique tasks\n", totalTasks)
 
-	// 5. publish announcement & Push Tasks to WorkQueue
+	// 6. Publish announcement & info subscription
 	fmt.Printf("📢 Step 4/6: Publishing project announcement and queuing tasks...\n")
 	announcement := protocol.ProjectAnnouncement{
 		ProjectID:          cfg.Name,
@@ -123,8 +142,6 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		CreatedAt:          time.Now().Unix(),
 	}
 	annBytes, _ := json.Marshal(announcement)
-	// _ = nc.Publish(transport.AnnouncementsSubject(), annBytes)
-	// _ = nc.Publish(transport.ProjectInfoSubject(cfg.Name), annBytes)
 
 	// Respond to info requests
 	infoSub, _ := nc.Subscribe(transport.ProjectInfoSubject(cfg.Name), func(msg *nats.Msg) {
@@ -138,7 +155,40 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 	}()
 
-	// Initialize task list and dispatcher
+	// 7. Load persisted state and compute set difference
+	persistedVerified, err := o.Store.GetVerifiedResults(cfg.Name)
+	if err != nil {
+		return fmt.Errorf("failed to load verified results from store: %w", err)
+	}
+	persistedRaw, err := o.Store.GetRawResults(cfg.Name)
+	if err != nil {
+		return fmt.Errorf("failed to load raw results from store: %w", err)
+	}
+
+	rawByTask := make(map[string][]protocol.TaskResult)
+	for _, r := range persistedRaw {
+		rawByTask[r.TaskID] = append(rawByTask[r.TaskID], r)
+	}
+
+	taskOutputs := make(map[string]map[string][]protocol.TaskResult)
+	taskIPs := make(map[string]map[string]bool)
+	verifiedResults := make(map[string]protocol.TaskResult)
+	for k, v := range persistedVerified {
+		verifiedResults[k] = v
+	}
+
+	reqRedundancy := cfg.Verification.Redundancy
+	if reqRedundancy <= 0 {
+		reqRedundancy = 1
+	}
+	threshold := cfg.Verification.ConsensusThreshold
+	if threshold <= 0 {
+		threshold = 1
+	}
+	if threshold > reqRedundancy {
+		threshold = reqRedundancy
+	}
+
 	taskOrder := make([]string, 0, totalTasks)
 	tasksList := make([]*managedTask, 0, totalTasks)
 	tasksMap := make(map[string]*managedTask)
@@ -170,9 +220,61 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			assignedIPs:  make(map[string]time.Time),
 			completedIPs: make(map[string]bool),
 		}
-		tasksList = append(tasksList, mt)
 		tasksMap[taskID] = mt
+
+		// If task already has verified consensus in DB, omit from tasksList
+		if _, ok := verifiedResults[taskID]; ok {
+			continue
+		}
+
+		// Rehydrate partial results if recorded in DB
+		if rawList, ok := rawByTask[taskID]; ok {
+			if taskIPs[taskID] == nil {
+				taskIPs[taskID] = make(map[string]bool)
+			}
+			if taskOutputs[taskID] == nil {
+				taskOutputs[taskID] = make(map[string][]protocol.TaskResult)
+			}
+			for _, r := range rawList {
+				if r.Status != "ok" {
+					continue
+				}
+				workerIP := getWorkerIP(r.IP, r.WorkerID)
+				if taskIPs[taskID][workerIP] {
+					continue
+				}
+				taskIPs[taskID][workerIP] = true
+				mt.completedIPs[workerIP] = true
+
+				normOutput := normalizeJSON(r.Output)
+				taskOutputs[taskID][normOutput] = append(taskOutputs[taskID][normOutput], r)
+			}
+
+			// Check if consensus is achieved with restored results
+			distinctIPCount := len(taskIPs[taskID])
+			consensusAchieved := false
+			for _, matching := range taskOutputs[taskID] {
+				if distinctIPCount >= reqRedundancy && len(matching) >= threshold {
+					verifiedResults[taskID] = matching[0]
+					_ = o.Store.SaveVerifiedResult(cfg.Name, matching[0])
+					consensusAchieved = true
+					break
+				}
+			}
+			if consensusAchieved {
+				continue
+			}
+		}
+
+		// Task still needs processing: include in dispatch set
+		tasksList = append(tasksList, mt)
 	}
+
+	if len(verifiedResults) > 0 {
+		fmt.Printf("   💾 Restored from DB: %d/%d tasks already verified.\n", len(verifiedResults), totalTasks)
+	}
+	fmt.Printf("   ✓ Initialized dispatcher for %d remaining tasks to process (redundancy %d)\n",
+		len(tasksList), cfg.Verification.Redundancy)
 
 	rand.Shuffle(len(tasksList), func(i, j int) {
 		tasksList[i], tasksList[j] = tasksList[j], tasksList[i]
@@ -182,6 +284,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		taskMu sync.Mutex
 		isDone bool
 	)
+	if len(verifiedResults) >= totalTasks {
+		isDone = true
+	}
 
 	reqSub, err := nc.Subscribe(transport.TaskRequestSubject(cfg.Name), func(msg *nats.Msg) {
 		var req protocol.TaskRequest
@@ -259,12 +364,19 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	}
 	defer reqSub.Unsubscribe()
 
-	fmt.Printf("   ✓ Initialized dispatcher for %d distinct tasks (redundancy %d)\n",
-		totalTasks, cfg.Verification.Redundancy)
-
-	// 6. Collect Results & Consensus Verification
+	// 8. Collect Results & Consensus Verification
 	fmt.Printf("🔍 Step 5/6: Waiting for volunteer results on '%s' & verifying consensus...\n", transport.ResultsSubject(cfg.Name))
-	verifiedResults, err := o.collectAndVerifyResults(ctx, cfg, taskOrder, &taskMu, tasksMap, &isDone)
+	verifiedResults, err = o.collectAndVerifyResults(
+		ctx,
+		cfg,
+		taskOrder,
+		&taskMu,
+		tasksMap,
+		&isDone,
+		verifiedResults,
+		taskOutputs,
+		taskIPs,
+	)
 
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
@@ -319,8 +431,15 @@ func (o *Orchestrator) collectAndVerifyResults(
 	taskMu *sync.Mutex,
 	tasksMap map[string]*managedTask,
 	isDone *bool,
+	verifiedResults map[string]protocol.TaskResult,
+	taskOutputs map[string]map[string][]protocol.TaskResult,
+	taskIPs map[string]map[string]bool,
 ) (map[string]protocol.TaskResult, error) {
 	totalDistinct := len(taskOrder)
+	if len(verifiedResults) >= totalDistinct {
+		return verifiedResults, nil
+	}
+
 	reqRedundancy := cfg.Verification.Redundancy
 	if reqRedundancy <= 0 {
 		reqRedundancy = 1
@@ -334,12 +453,6 @@ func (o *Orchestrator) collectAndVerifyResults(
 	}
 
 	var mtx sync.Mutex
-	// taskID -> canonicalOutput -> list of results with this output
-	taskOutputs := make(map[string]map[string][]protocol.TaskResult)
-	// taskID -> workerIP -> bool (guarantees just one workload per IP of an agent)
-	taskIPs := make(map[string]map[string]bool)
-	verifiedResults := make(map[string]protocol.TaskResult)
-
 	doneCh := make(chan struct{})
 	var doneOnce sync.Once
 	subj := transport.ResultsSubject(cfg.Name)
@@ -386,6 +499,12 @@ func (o *Orchestrator) collectAndVerifyResults(
 		}
 		taskIPs[res.TaskID][workerIP] = true
 
+		if o.Store != nil {
+			if err := o.Store.SaveRawResult(cfg.Name, res); err != nil {
+				fmt.Printf("⚠️  [Master] Failed to persist raw result for task %s: %v\n", res.TaskID, err)
+			}
+		}
+
 		normOutput := normalizeJSON(res.Output)
 		if taskOutputs[res.TaskID] == nil {
 			taskOutputs[res.TaskID] = make(map[string][]protocol.TaskResult)
@@ -397,6 +516,11 @@ func (o *Orchestrator) collectAndVerifyResults(
 
 		if distinctIPCount >= reqRedundancy && matchCount >= threshold {
 			verifiedResults[res.TaskID] = res
+			if o.Store != nil {
+				if err := o.Store.SaveVerifiedResult(cfg.Name, res); err != nil {
+					fmt.Printf("⚠️  [Master] Failed to persist verified result for task %s: %v\n", res.TaskID, err)
+				}
+			}
 			fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d/%d distinct IPs | Total Verified: %d/%d)\n",
 				res.TaskID, matchCount, threshold, distinctIPCount, reqRedundancy, len(verifiedResults), totalDistinct)
 			if len(verifiedResults) >= totalDistinct {

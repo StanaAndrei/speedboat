@@ -17,6 +17,7 @@ type CLI struct {
 		NatsURL    string `help:"NATS server endpoint" default:"nats://localhost:4222" env:"NATS_URL"`
 		Registry   string `help:"Docker registry URL" default:"localhost:5000" env:"DOCKER_REGISTRY"`
 		NoBuild    bool   `help:"Skip image building step" default:"false"`
+		DB         string `help:"Path to bbolt database file" default:"speedboat.db" env:"DB_PATH"`
 	} `cmd:"" help:"Build image, load tasks, and start orchestrator."`
 
 	Build struct {
@@ -47,6 +48,7 @@ func main() {
 			cli.Run.NatsURL,
 			cli.Run.Registry,
 			cli.Run.NoBuild,
+			cli.Run.DB,
 		)
 		if err := orch.Run(sigCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "Master orchestrator error: %v\n", err)
