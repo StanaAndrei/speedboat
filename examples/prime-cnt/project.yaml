@@ -10,5 +10,5 @@ reducer:
   runtime: python3
   source: reducer.py
 verification:
-  redundancy: 3
-  consensus_threshold: 2
+  redundancy: 1 # 3
+  consensus_threshold: 1 # 2

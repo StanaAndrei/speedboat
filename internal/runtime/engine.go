@@ -21,17 +21,17 @@ func AutoDetectEngine(preference string) (Engine, error) {
 	wasmEng := NewWasmEngine()
 
 	switch pref {
-	case "docker":
-		if dockerEng.IsAvailable() {
-			return dockerEng, nil
-		}
-		return nil, fmt.Errorf("docker runtime requested but docker is not available")
-
 	case "apptainer", "singularity":
 		if apptainerEng.IsAvailable() {
 			return apptainerEng, nil
 		}
 		return nil, fmt.Errorf("apptainer runtime requested but apptainer is not available")
+
+	case "docker":
+		if dockerEng.IsAvailable() {
+			return dockerEng, nil
+		}
+		return nil, fmt.Errorf("docker runtime requested but docker is not available")
 
 	case "wasm", "wazero":
 		if wasmEng.IsAvailable() {

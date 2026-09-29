@@ -65,4 +65,4 @@ test-clean: stop-agents
 	cd ./tests/test_prime_cnt_cluster && docker compose down -v --remove-orphans
 
 clean: test-clean
-	rm -rf build/*
+	rm -rf build/* ./speedboat.db
