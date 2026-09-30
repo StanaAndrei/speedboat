@@ -208,3 +208,187 @@ func TestAllTasksAlreadyVerified(t *testing.T) {
 	}
 }
 
+func TestNewOrchestratorSendDup(t *testing.T) {
+	orchDefault := NewOrchestrator(".", "nats://localhost:4222", "registry:5000", true, "test.db")
+	if orchDefault.SendDup {
+		t.Fatalf("expected SendDup to default to false, got true")
+	}
+
+	orchFalse := NewOrchestrator(".", "nats://localhost:4222", "registry:5000", true, "test.db", false)
+	if orchFalse.SendDup {
+		t.Fatalf("expected SendDup to be false, got true")
+	}
+
+	orchTrue := NewOrchestrator(".", "nats://localhost:4222", "registry:5000", true, "test.db", true)
+	if !orchTrue.SendDup {
+		t.Fatalf("expected SendDup to be true, got false")
+	}
+}
+
+func TestDispatcherSendDupSelection(t *testing.T) {
+	redundancy := 2
+	workerIP := "192.168.1.10"
+	workerKey := "192.168.1.10-w1"
+
+	selectTask := func(sendDup bool, tasksList []*managedTask, verifiedResults map[string]protocol.TaskResult) *managedTask {
+		isEligible := func(mt *managedTask) bool {
+			if _, verified := verifiedResults[mt.taskID]; verified {
+				return false
+			}
+
+			if sendDup {
+				activeCount := 0
+				for key, ts := range mt.assignedIPs {
+					if key != workerKey && time.Since(ts) < 60*time.Second {
+						activeCount++
+					}
+				}
+				return mt.completedCount+activeCount < redundancy
+			} else {
+				if mt.completedIPs[workerIP] {
+					return false
+				}
+				activeOther := 0
+				for otherIP, ts := range mt.assignedIPs {
+					if otherIP != workerIP && time.Since(ts) < 60*time.Second && !mt.completedIPs[otherIP] {
+						activeOther++
+					}
+				}
+				return len(mt.completedIPs)+activeOther < redundancy
+			}
+		}
+
+		for _, mt := range tasksList {
+			if !mt.completedIPs[workerIP] && isEligible(mt) {
+				return mt
+			}
+		}
+
+		if sendDup {
+			for _, mt := range tasksList {
+				if isEligible(mt) {
+					return mt
+				}
+			}
+		}
+
+		return nil
+	}
+
+	mt := &managedTask{
+		taskID:         "task-0001",
+		rawBytes:       []byte(`{"task_id":"task-0001"}`),
+		assignedIPs:    make(map[string]time.Time),
+		completedIPs:   make(map[string]bool),
+		completedCount: 0,
+	}
+	tasksList := []*managedTask{mt}
+	verifiedResults := make(map[string]protocol.TaskResult)
+
+	// Round 1: First assignment to fresh worker
+	sel := selectTask(false, tasksList, verifiedResults)
+	if sel == nil || sel.taskID != "task-0001" {
+		t.Fatalf("expected task-0001 to be selected on round 1")
+	}
+
+	// Worker completes round 1
+	mt.completedIPs[workerIP] = true
+	mt.completedCount = 1
+
+	// Round 2 with sendDup = false (Default): should NOT send duplicate task to same workerIP
+	selDefault := selectTask(false, tasksList, verifiedResults)
+	if selDefault != nil {
+		t.Fatalf("expected nil when sendDup is false and worker already completed the task, got %s", selDefault.taskID)
+	}
+
+	// Round 2 with sendDup = true: SHOULD send duplicate task to same workerIP
+	selDup := selectTask(true, tasksList, verifiedResults)
+	if selDup == nil || selDup.taskID != "task-0001" {
+		t.Fatalf("expected task-0001 to be selected when sendDup is true, got %v", selDup)
+	}
+
+	// Worker completes round 2
+	mt.completedCount = 2
+
+	// Round 3 with sendDup = true: redundancy (2) reached, should NOT select task again
+	selLimit := selectTask(true, tasksList, verifiedResults)
+	if selLimit != nil {
+		t.Fatalf("expected nil when redundancy is reached even with sendDup=true, got %s", selLimit.taskID)
+	}
+}
+
+func TestConsensusVerificationSendDup(t *testing.T) {
+	reqRedundancy := 2
+	threshold := 2
+	workerIP := "192.168.1.10"
+	taskID := "task-0001"
+
+	simulateConsensus := func(sendDup bool, results []protocol.TaskResult) bool {
+		taskIPs := make(map[string]bool)
+		taskOutputs := make(map[string][]protocol.TaskResult)
+		consensusAchieved := false
+
+		for _, res := range results {
+			if !sendDup && taskIPs[workerIP] {
+				// duplicate result from same IP ignored when sendDup is false
+				continue
+			}
+			taskIPs[workerIP] = true
+
+			norm := normalizeJSON(res.Output)
+			taskOutputs[norm] = append(taskOutputs[norm], res)
+
+			matchCount := len(taskOutputs[norm])
+			distinctIPCount := len(taskIPs)
+			totalCount := 0
+			for _, matching := range taskOutputs {
+				totalCount += len(matching)
+			}
+
+			if sendDup {
+				if totalCount >= reqRedundancy && matchCount >= threshold {
+					consensusAchieved = true
+					break
+				}
+			} else {
+				if distinctIPCount >= reqRedundancy && matchCount >= threshold {
+					consensusAchieved = true
+					break
+				}
+			}
+		}
+
+		return consensusAchieved
+	}
+
+	resultsFromSameIP := []protocol.TaskResult{
+		{
+			TaskID:    taskID,
+			ProjectID: "test-proj",
+			Status:    "ok",
+			Output:    json.RawMessage(`{"count": 42}`),
+			WorkerID:  "192.168.1.10-w1",
+			IP:        workerIP,
+		},
+		{
+			TaskID:    taskID,
+			ProjectID: "test-proj",
+			Status:    "ok",
+			Output:    json.RawMessage(`{"count": 42}`),
+			WorkerID:  "192.168.1.10-w1",
+			IP:        workerIP,
+		},
+	}
+
+	// When sendDup is false: consensus should NOT be reached with only 1 distinct IP
+	if simulateConsensus(false, resultsFromSameIP) {
+		t.Fatalf("expected consensus to fail when sendDup is false and results come from same IP")
+	}
+
+	// When sendDup is true: consensus SHOULD be reached because 2 matching results arrived
+	if !simulateConsensus(true, resultsFromSameIP) {
+		t.Fatalf("expected consensus to succeed when sendDup is true and results come from same IP")
+	}
+}
+
+

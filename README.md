@@ -87,6 +87,7 @@ classDiagram
         +bool NoBuild
         +Duration Timeout
         +string DBPath
+        +bool SendDup
         +ProjectConfig Config
         +Store Store
         -nats_Conn nc
@@ -102,6 +103,7 @@ classDiagram
         +bytes rawBytes
         +Map assignedIPs
         +Map completedIPs
+        +int completedCount
     }
 
     %% ================= Agent Structs =================
@@ -331,7 +333,7 @@ sequenceDiagram
 | Struct / Interface | Package | Key Responsibilities | Relationships & Method Invocations |
 | :--- | :--- | :--- | :--- |
 | [`Orchestrator`](internal/orchestrator/orchestrator.go#L30-L41) | `internal/orchestrator` | Central master orchestrator. Loads configs, builds images, generates tasks, distributes work, validates consensus, and triggers reduction. | • Owns [`ProjectConfig`](internal/protocol/types.go#L12-L19)<br>• Owns in-memory [`managedTask`](internal/orchestrator/orchestrator.go#L23-L28) pool<br>• Uses [`Store`](internal/store/store.go#L8-L23) (`SaveRawResult`, `SaveVerifiedResult`)<br>• Calls internal `runGenerator`, `collectAndVerifyResults`, `runReducer` |
-| [`managedTask`](internal/orchestrator/orchestrator.go#L23-L28) | `internal/orchestrator` | Internal tracking entity for a single task unit, tracking active IP leases and completions. | • Managed exclusively by [`Orchestrator`](internal/orchestrator/orchestrator.go#L30-L41) to enforce redundancy limits and avoid duplicate IP assignment |
+| [`managedTask`](internal/orchestrator/orchestrator.go#L23-L29) | `internal/orchestrator` | Internal tracking entity for a single task unit, tracking active IP leases and completions. | • Managed exclusively by [`Orchestrator`](internal/orchestrator/orchestrator.go#L31-L43) to enforce redundancy limits and avoid duplicate IP assignment (unless `--send-dup` is enabled) |
 | [`Agent`](internal/agent/agent.go#L19-L32) | `internal/agent` | Volunteer client worker. Polls for tasks, executes tasks in a sandbox, and reports results. | • Holds and delegates execution to [`Engine`](internal/runtime/engine.go#L9-L14)<br>• Calls `processTaskData` to parse [`Task`](internal/protocol/types.go#L36-L42) and publish [`TaskResult`](internal/protocol/types.go#L44-L52) |
 | [`Engine`](internal/runtime/engine.go#L9-L14) *(Interface)* | `internal/runtime` | Abstraction for isolated execution runtimes (`PullImage`, `Execute`, `IsAvailable`, `Name`). | • Implemented by [`DockerEngine`](internal/runtime/docker.go#L12), [`ApptainerEngine`](internal/runtime/apptainer.go#L14-L18), and [`WasmEngine`](internal/runtime/wasm.go#L11-L13)<br>• Invoked by [`Agent.processTaskData`](internal/agent/agent.go#L194-L273) |
 | [`DockerEngine`](internal/runtime/docker.go#L12) | `internal/runtime` | Executes tasks inside rootless Docker containers with `--network none` isolation. | • Implements [`Engine`](internal/runtime/engine.go#L9-L14) |
@@ -345,7 +347,7 @@ sequenceDiagram
 | [`TaskRequest`](internal/protocol/types.go#L71-L76) / [`TaskResponse`](internal/protocol/types.go#L78-L81) | `internal/protocol` | Request-reply payload for work pulling and lease tracking over NATS. | • Exchanged between [`Agent`](internal/agent/agent.go#L19-L32) and [`Orchestrator`](internal/orchestrator/orchestrator.go#L30-L41) on `requests.<project_id>` |
 | [`ReducerBatch`](internal/protocol/types.go#L66-L69) | `internal/protocol` | Aggregated slice of consensus-verified results passed to `reducer.py`. | • Constructed by [`Orchestrator.runReducer`](internal/orchestrator/orchestrator.go#L550-L596) |
 | [`ProjectAnnouncement`](internal/protocol/types.go#L54-L64) | `internal/protocol` | Broadcast message announcing project availability and metadata. | • Published by [`Orchestrator`](internal/orchestrator/orchestrator.go#L30-L41) on `announcements` and `projects.<id>.info` |
-| `CLI` (Master) | `cmd/master` | Command-line interface for the scientist to run the master orchestrator. | • Instantiates and runs [`Orchestrator`](internal/orchestrator/orchestrator.go#L30-L41) |
+| `CLI` (Master) | `cmd/master` | Command-line interface for the scientist to run the master orchestrator (`--send-dup`, etc.). | • Instantiates and runs [`Orchestrator`](internal/orchestrator/orchestrator.go#L30-L41) |
 | `CLI` (Agent) | `cmd/agent` | Command-line interface for volunteers running the compute agent. | • Instantiates and runs [`Agent`](internal/agent/agent.go#L19-L32) |
 
 ---

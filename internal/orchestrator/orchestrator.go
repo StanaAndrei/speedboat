@@ -21,10 +21,11 @@ import (
 )
 
 type managedTask struct {
-	taskID       string
-	rawBytes     []byte
-	assignedIPs  map[string]time.Time
-	completedIPs map[string]bool
+	taskID         string
+	rawBytes       []byte
+	assignedIPs    map[string]time.Time
+	completedIPs   map[string]bool
+	completedCount int
 }
 
 type Orchestrator struct {
@@ -34,20 +35,25 @@ type Orchestrator struct {
 	NoBuild    bool
 	Timeout    time.Duration
 	DBPath     string
+	SendDup    bool
 	Config     *protocol.ProjectConfig
 	nc         *nats.Conn
 	js         nats.JetStreamContext
 	Store      store.Store
 }
 
-func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild bool, dbPath ...string) *Orchestrator {
+func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild bool, dbPath string, sendDup ...bool) *Orchestrator {
 	absDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		absDir = projectDir
 	}
-	db := "speedboat.db"
-	if len(dbPath) > 0 && dbPath[0] != "" {
-		db = dbPath[0]
+	db := dbPath
+	if db == "" {
+		db = "speedboat.db"
+	}
+	isSendDup := false
+	if len(sendDup) > 0 {
+		isSendDup = sendDup[0]
 	}
 	return &Orchestrator{
 		ProjectDir: absDir,
@@ -56,6 +62,7 @@ func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild
 		NoBuild:    noBuild,
 		Timeout:    0, // unlimited by default
 		DBPath:     db,
+		SendDup:    isSendDup,
 	}
 }
 
@@ -68,8 +75,8 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	o.Config = cfg
 
 	fmt.Printf("🚀 Speedboat Master: Project '%s' (v%s)\n", cfg.Name, cfg.Version)
-	fmt.Printf("   Redundancy: %d | Consensus Threshold: %d\n",
-		cfg.Verification.Redundancy, cfg.Verification.ConsensusThreshold)
+	fmt.Printf("   Redundancy: %d | Consensus Threshold: %d | Send Duplicate: %v\n",
+		cfg.Verification.Redundancy, cfg.Verification.ConsensusThreshold, o.SendDup)
 
 	// 2. Build & push container img
 	var imageTag string
@@ -240,11 +247,12 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 					continue
 				}
 				workerIP := getWorkerIP(r.IP, r.WorkerID)
-				if taskIPs[taskID][workerIP] {
+				if !o.SendDup && taskIPs[taskID][workerIP] {
 					continue
 				}
 				taskIPs[taskID][workerIP] = true
 				mt.completedIPs[workerIP] = true
+				mt.completedCount++
 
 				normOutput := normalizeJSON(r.Output)
 				taskOutputs[taskID][normOutput] = append(taskOutputs[taskID][normOutput], r)
@@ -252,9 +260,19 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 
 			// Check if consensus is achieved with restored results
 			distinctIPCount := len(taskIPs[taskID])
+			totalResultCount := 0
+			for _, matching := range taskOutputs[taskID] {
+				totalResultCount += len(matching)
+			}
 			consensusAchieved := false
 			for _, matching := range taskOutputs[taskID] {
-				if distinctIPCount >= reqRedundancy && len(matching) >= threshold {
+				reached := false
+				if o.SendDup {
+					reached = totalResultCount >= reqRedundancy && len(matching) >= threshold
+				} else {
+					reached = distinctIPCount >= reqRedundancy && len(matching) >= threshold
+				}
+				if reached {
 					verifiedResults[taskID] = matching[0]
 					_ = o.Store.SaveVerifiedResult(cfg.Name, matching[0])
 					consensusAchieved = true
@@ -296,13 +314,20 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 
 		workerIP := getWorkerIP(req.IP, req.WorkerID)
+		workerKey := workerIP
+		if o.SendDup && req.WorkerID != "" {
+			workerKey = req.WorkerID
+		}
 
 		taskMu.Lock()
 		defer taskMu.Unlock()
 
 		if req.CompletedTaskID != "" {
 			if mt, ok := tasksMap[req.CompletedTaskID]; ok {
-				delete(mt.assignedIPs, workerIP)
+				if _, assigned := mt.assignedIPs[workerKey]; assigned {
+					delete(mt.assignedIPs, workerKey)
+					mt.completedCount++
+				}
 				mt.completedIPs[workerIP] = true
 			}
 		}
@@ -318,36 +343,60 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			redundancy = 1
 		}
 
-		// Clear any existing in-flight assignment for this workerIP
+		// Clear any existing in-flight assignment for this worker
 		for _, mt := range tasksList {
-			delete(mt.assignedIPs, workerIP)
+			delete(mt.assignedIPs, workerKey)
 		}
 
 		var selected *managedTask
-		for _, mt := range tasksList {
-			// Never send a task if this IP already completed it
-			if mt.completedIPs[workerIP] {
-				continue
+
+		isEligible := func(mt *managedTask) bool {
+			if _, verified := verifiedResults[mt.taskID]; verified {
+				return false
 			}
 
-			// Count active assignments to other IPs
-			activeOther := 0
-			for otherIP, t := range mt.assignedIPs {
-				if otherIP != workerIP && time.Since(t) < 60*time.Second && !mt.completedIPs[otherIP] {
-					activeOther++
+			if o.SendDup {
+				activeCount := 0
+				for key, t := range mt.assignedIPs {
+					if key != workerKey && time.Since(t) < 60*time.Second {
+						activeCount++
+					}
+				}
+				return mt.completedCount+activeCount < redundancy
+			} else {
+				if mt.completedIPs[workerIP] {
+					return false
+				}
+				activeOther := 0
+				for otherIP, t := range mt.assignedIPs {
+					if otherIP != workerIP && time.Since(t) < 60*time.Second && !mt.completedIPs[otherIP] {
+						activeOther++
+					}
+				}
+				return len(mt.completedIPs)+activeOther < redundancy
+			}
+		}
+
+		// Selection pass 1: Prefer tasks this workerIP has not completed yet
+		for _, mt := range tasksList {
+			if !mt.completedIPs[workerIP] && isEligible(mt) {
+				selected = mt
+				break
+			}
+		}
+
+		// Selection pass 2: If send-dup is enabled, allow tasks this workerIP already completed
+		if selected == nil && o.SendDup {
+			for _, mt := range tasksList {
+				if isEligible(mt) {
+					selected = mt
+					break
 				}
 			}
-
-			if len(mt.completedIPs)+activeOther >= redundancy {
-				continue
-			}
-
-			selected = mt
-			selected.assignedIPs[workerIP] = time.Now()
-			break
 		}
 
 		if selected != nil {
+			selected.assignedIPs[workerKey] = time.Now()
 			respBytes, _ := json.Marshal(protocol.TaskResponse{
 				Status: "ok",
 				Task:   selected.rawBytes,
@@ -468,10 +517,21 @@ func (o *Orchestrator) collectAndVerifyResults(
 		}
 
 		workerIP := getWorkerIP(res.IP, res.WorkerID)
+		workerKey := workerIP
+		if o.SendDup && res.WorkerID != "" {
+			workerKey = res.WorkerID
+		}
 
 		taskMu.Lock()
 		if mt, ok := tasksMap[res.TaskID]; ok {
-			delete(mt.assignedIPs, workerIP)
+			if _, assigned := mt.assignedIPs[workerKey]; assigned {
+				delete(mt.assignedIPs, workerKey)
+				if res.Status == "ok" {
+					mt.completedCount++
+				}
+			} else if res.Status != "ok" && mt.completedCount > 0 {
+				mt.completedCount--
+			}
 			if res.Status == "ok" {
 				mt.completedIPs[workerIP] = true
 			}
@@ -493,7 +553,7 @@ func (o *Orchestrator) collectAndVerifyResults(
 		if taskIPs[res.TaskID] == nil {
 			taskIPs[res.TaskID] = make(map[string]bool)
 		}
-		if taskIPs[res.TaskID][workerIP] {
+		if !o.SendDup && taskIPs[res.TaskID][workerIP] {
 			fmt.Printf("⚠️  [Master] Duplicate workload result for task %s from same IP %s ignored\n", res.TaskID, workerIP)
 			return
 		}
@@ -513,16 +573,32 @@ func (o *Orchestrator) collectAndVerifyResults(
 
 		matchCount := len(taskOutputs[res.TaskID][normOutput])
 		distinctIPCount := len(taskIPs[res.TaskID])
+		totalCount := 0
+		for _, matching := range taskOutputs[res.TaskID] {
+			totalCount += len(matching)
+		}
 
-		if distinctIPCount >= reqRedundancy && matchCount >= threshold {
+		reachedConsensus := false
+		if o.SendDup {
+			reachedConsensus = totalCount >= reqRedundancy && matchCount >= threshold
+		} else {
+			reachedConsensus = distinctIPCount >= reqRedundancy && matchCount >= threshold
+		}
+
+		if reachedConsensus {
 			verifiedResults[res.TaskID] = res
 			if o.Store != nil {
 				if err := o.Store.SaveVerifiedResult(cfg.Name, res); err != nil {
 					fmt.Printf("⚠️  [Master] Failed to persist verified result for task %s: %v\n", res.TaskID, err)
 				}
 			}
-			fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d/%d distinct IPs | Total Verified: %d/%d)\n",
-				res.TaskID, matchCount, threshold, distinctIPCount, reqRedundancy, len(verifiedResults), totalDistinct)
+			if o.SendDup {
+				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d/%d results | Total Verified: %d/%d)\n",
+					res.TaskID, matchCount, threshold, totalCount, reqRedundancy, len(verifiedResults), totalDistinct)
+			} else {
+				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d/%d distinct IPs | Total Verified: %d/%d)\n",
+					res.TaskID, matchCount, threshold, distinctIPCount, reqRedundancy, len(verifiedResults), totalDistinct)
+			}
 			if len(verifiedResults) >= totalDistinct {
 				taskMu.Lock()
 				*isDone = true
