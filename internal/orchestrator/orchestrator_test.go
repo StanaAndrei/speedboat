@@ -44,17 +44,17 @@ func TestStateRehydrationAndSetDifference(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "state.db")
 
-	bboltStore, err := store.NewBboltStore(dbPath)
+	sqlStore, err := store.NewSQLStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer bboltStore.Close()
+	defer sqlStore.Close()
 
 	projectID := "test-project"
 
 	// Pre-populate DB:
 	// task-0001: already verified
-	_ = bboltStore.SaveVerifiedResult(projectID, protocol.TaskResult{
+	_ = sqlStore.SaveVerifiedResult(projectID, protocol.TaskResult{
 		TaskID:    "task-0001",
 		ProjectID: projectID,
 		Status:    "ok",
@@ -62,7 +62,7 @@ func TestStateRehydrationAndSetDifference(t *testing.T) {
 	})
 
 	// task-0002: has 1 raw result from 10.0.0.1 (needs redundancy 2)
-	_ = bboltStore.SaveRawResult(projectID, protocol.TaskResult{
+	_ = sqlStore.SaveRawResult(projectID, protocol.TaskResult{
 		TaskID:    "task-0002",
 		ProjectID: projectID,
 		Status:    "ok",
@@ -87,11 +87,11 @@ func TestStateRehydrationAndSetDifference(t *testing.T) {
 	}
 
 	// Rehydrate state as done in orchestrator.Run
-	persistedVerified, err := bboltStore.GetVerifiedResults(cfg.Name)
+	persistedVerified, err := sqlStore.GetVerifiedResults(cfg.Name)
 	if err != nil {
 		t.Fatalf("GetVerifiedResults failed: %v", err)
 	}
-	persistedRaw, err := bboltStore.GetRawResults(cfg.Name)
+	persistedRaw, err := sqlStore.GetRawResults(cfg.Name)
 	if err != nil {
 		t.Fatalf("GetRawResults failed: %v", err)
 	}

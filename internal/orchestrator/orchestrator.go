@@ -115,7 +115,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	// 4. Initialize persistent store
 	if o.Store == nil {
 		fmt.Printf("💾 Initializing persistent store at %s...\n", o.DBPath)
-		dbStore, err := store.NewBboltStore(o.DBPath)
+		dbStore, err := store.NewSQLStore(o.DBPath)
 		if err != nil {
 			return fmt.Errorf("failed to initialize store at %s: %w", o.DBPath, err)
 		}

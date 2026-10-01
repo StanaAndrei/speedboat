@@ -17,7 +17,7 @@ type CLI struct {
 		NatsURL    string `help:"NATS server endpoint" default:"nats://localhost:4222" env:"NATS_URL"`
 		Registry   string `help:"Docker registry URL" default:"localhost:5000" env:"DOCKER_REGISTRY"`
 		NoBuild    bool   `help:"Skip image building step" default:"false"`
-		DB         string `help:"Path to bbolt database file" default:"speedboat.db" env:"DB_PATH"`
+		DB         string `help:"Database file path (SQLite) or connection string (PostgreSQL/MySQL)" default:"speedboat.db" env:"DB_PATH"`
 		SendDup    bool   `name:"send-dup" help:"Allow orchestrator to send redundant tasks to the same agent IP" default:"false"`
 	} `cmd:"" help:"Build image, load tasks, and start orchestrator."`
 
