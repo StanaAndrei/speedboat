@@ -391,4 +391,228 @@ func TestConsensusVerificationSendDup(t *testing.T) {
 	}
 }
 
+func TestTrapTaskDispatchAfterConsensus(t *testing.T) {
+	redundancy := 3
+	worker1 := "192.168.1.11"
+	worker2 := "192.168.1.12"
+	worker3 := "192.168.1.13"
+
+	selectTask := func(workerIP string, tasksList []*managedTask, verifiedResults map[string]protocol.TaskResult) (*managedTask, bool) {
+		isEligible := func(mt *managedTask) bool {
+			if mt.completedIPs[workerIP] {
+				return false
+			}
+			activeOther := 0
+			for otherIP, ts := range mt.assignedIPs {
+				if otherIP != workerIP && time.Since(ts) < 60*time.Second && !mt.completedIPs[otherIP] {
+					activeOther++
+				}
+			}
+			return len(mt.completedIPs)+activeOther < redundancy
+		}
+
+		// Pass 1: Unverified tasks
+		for _, mt := range tasksList {
+			if _, verified := verifiedResults[mt.taskID]; !verified {
+				if !mt.completedIPs[workerIP] && isEligible(mt) {
+					return mt, false
+				}
+			}
+		}
+
+		// Pass 2: Verified tasks as traps
+		for _, mt := range tasksList {
+			if _, verified := verifiedResults[mt.taskID]; verified {
+				if !mt.completedIPs[workerIP] && isEligible(mt) {
+					return mt, true
+				}
+			}
+		}
+		return nil, false
+	}
+
+	mt := &managedTask{
+		taskID:       "task-0001",
+		rawBytes:     []byte(`{"task_id":"task-0001"}`),
+		assignedIPs:  make(map[string]time.Time),
+		completedIPs: make(map[string]bool),
+	}
+	tasksList := []*managedTask{mt}
+	verifiedResults := make(map[string]protocol.TaskResult)
+
+	// Worker 1 executes task
+	sel, isTrap := selectTask(worker1, tasksList, verifiedResults)
+	if sel == nil || isTrap {
+		t.Fatalf("expected task-0001 as unverified task for worker1")
+	}
+	mt.completedIPs[worker1] = true
+	mt.completedCount = 1
+
+	// Worker 2 executes task
+	sel, isTrap = selectTask(worker2, tasksList, verifiedResults)
+	if sel == nil || isTrap {
+		t.Fatalf("expected task-0001 as unverified task for worker2")
+	}
+	mt.completedIPs[worker2] = true
+	mt.completedCount = 2
+
+	// Consensus reached! 2 out of 3 agreed.
+	verifiedResults["task-0001"] = protocol.TaskResult{
+		TaskID: "task-0001",
+		Status: "ok",
+		Output: json.RawMessage(`{"res": 42}`),
+	}
+
+	// Worker 3 requests work: should get task-0001 as a TRAP task!
+	sel, isTrap = selectTask(worker3, tasksList, verifiedResults)
+	if sel == nil || !isTrap {
+		t.Fatalf("expected task-0001 to be selected as TRAP task for worker3, got sel=%v, isTrap=%v", sel, isTrap)
+	}
+
+	// Worker 3 completes trap
+	mt.completedIPs[worker3] = true
+	mt.completedCount = 3
+
+	// Now all 3 redundant runs are complete: no more workers should get the task
+	sel, _ = selectTask("192.168.1.14", tasksList, verifiedResults)
+	if sel != nil {
+		t.Fatalf("expected nil task when redundancy limit (3) is reached, got %s", sel.taskID)
+	}
+}
+
+func TestCheatingDetectedOnTrapTask(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "trap_test.db")
+	sqlStore, err := store.NewSQLStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer sqlStore.Close()
+
+	orch := NewOrchestrator(".", "nats://localhost:4222", "registry:5000", true, dbPath)
+	orch.Store = sqlStore
+
+	verifiedResults := map[string]protocol.TaskResult{
+		"task-0001": {
+			TaskID: "task-0001",
+			Status: "ok",
+			Output: json.RawMessage(`{"count": 42}`),
+		},
+	}
+
+	tasksMap := map[string]*managedTask{
+		"task-0001": {
+			taskID:      "task-0001",
+			assignedIPs: map[string]time.Time{"10.0.0.99": time.Now()},
+		},
+	}
+
+	// Honest worker submits matching output
+	honestRes := protocol.TaskResult{
+		TaskID: "task-0001",
+		Status: "ok",
+		Output: json.RawMessage(`{"count": 42}`),
+		IP:     "10.0.0.50",
+	}
+	normHonest := normalizeJSON(honestRes.Output)
+	expectedNorm := normalizeJSON(verifiedResults["task-0001"].Output)
+	if normHonest != expectedNorm {
+		t.Fatalf("expected honest output to match")
+	}
+
+	// Cheating worker submits fake output
+	cheatRes := protocol.TaskResult{
+		TaskID: "task-0001",
+		Status: "ok",
+		Output: json.RawMessage(`{"count": 999}`),
+		IP:     "10.0.0.99",
+	}
+	normCheat := normalizeJSON(cheatRes.Output)
+	if normCheat != expectedNorm {
+		orch.blacklistIP(cheatRes.IP, "Trap output mismatch", tasksMap)
+	}
+
+	// Verify blacklisting
+	if !orch.isIPBlacklisted("10.0.0.99") {
+		t.Fatalf("expected cheating IP 10.0.0.99 to be blacklisted in memory")
+	}
+	isBL, err := sqlStore.IsIPBlacklisted("10.0.0.99")
+	if err != nil || !isBL {
+		t.Fatalf("expected cheating IP 10.0.0.99 to be blacklisted in DB")
+	}
+	if orch.isIPBlacklisted("10.0.0.50") {
+		t.Fatalf("honest IP 10.0.0.50 should not be blacklisted")
+	}
+}
+
+func TestMinorityCheaterBlacklistedBeforeConsensus(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "minority_test.db")
+	sqlStore, err := store.NewSQLStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer sqlStore.Close()
+
+	orch := NewOrchestrator(".", "nats://localhost:4222", "registry:5000", true, dbPath)
+	orch.Store = sqlStore
+
+	taskID := "task-0001"
+	threshold := 2
+	taskOutputs := make(map[string][]protocol.TaskResult)
+
+	// Step 1: Worker 1 (10.0.0.1) submits correct answer 42
+	res1 := protocol.TaskResult{TaskID: taskID, Status: "ok", Output: json.RawMessage(`{"val": 42}`), IP: "10.0.0.1"}
+	taskOutputs[normalizeJSON(res1.Output)] = append(taskOutputs[normalizeJSON(res1.Output)], res1)
+
+	// Step 2: Worker 2 (10.0.0.2) submits fake answer 999
+	res2 := protocol.TaskResult{TaskID: taskID, Status: "ok", Output: json.RawMessage(`{"val": 999}`), IP: "10.0.0.2"}
+	taskOutputs[normalizeJSON(res2.Output)] = append(taskOutputs[normalizeJSON(res2.Output)], res2)
+
+	// Check: Neither has 2 votes. No consensus yet, no blacklisting yet.
+	if len(taskOutputs[normalizeJSON(res1.Output)]) >= threshold || len(taskOutputs[normalizeJSON(res2.Output)]) >= threshold {
+		t.Fatalf("unexpected early consensus")
+	}
+	if orch.isIPBlacklisted("10.0.0.1") || orch.isIPBlacklisted("10.0.0.2") {
+		t.Fatalf("neither worker should be blacklisted before consensus")
+	}
+
+	// Step 3: Worker 3 (10.0.0.3) submits answer 42
+	res3 := protocol.TaskResult{TaskID: taskID, Status: "ok", Output: json.RawMessage(`{"val": 42}`), IP: "10.0.0.3"}
+	consensusNorm := normalizeJSON(res3.Output)
+	taskOutputs[consensusNorm] = append(taskOutputs[consensusNorm], res3)
+
+	// Now answer 42 has 2 votes >= threshold 2. Consensus reached!
+	if len(taskOutputs[consensusNorm]) < threshold {
+		t.Fatalf("expected consensus on 42")
+	}
+
+	// Minority resolution: any other submitted output is in the minority and blacklisted
+	for normOut, list := range taskOutputs {
+		if normOut != consensusNorm {
+			for _, badRes := range list {
+				orch.blacklistIP(badRes.IP, "Minority divergence from consensus")
+			}
+		}
+	}
+
+	// Verify Worker 2 (10.0.0.2) is blacklisted
+	if !orch.isIPBlacklisted("10.0.0.2") {
+		t.Fatalf("expected minority worker 10.0.0.2 to be blacklisted in memory")
+	}
+	isBL, err := sqlStore.IsIPBlacklisted("10.0.0.2")
+	if err != nil || !isBL {
+		t.Fatalf("expected minority worker 10.0.0.2 to be blacklisted in DB")
+	}
+
+	// Verify Worker 1 and Worker 3 are NOT blacklisted
+	if orch.isIPBlacklisted("10.0.0.1") {
+		t.Fatalf("worker 1 should not be blacklisted")
+	}
+	if orch.isIPBlacklisted("10.0.0.3") {
+		t.Fatalf("worker 3 should not be blacklisted")
+	}
+}
+
+
 

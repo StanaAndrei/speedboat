@@ -162,6 +162,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			return nil
 		}
 
+		if resp.Status == "blacklisted" {
+			fmt.Printf("🚫 [Worker %s] Worker IP %s has been blacklisted by the master. Exiting.\n", a.WorkerID, a.IP)
+			return nil
+		}
+
 		if resp.Status == "no_tasks" {
 			if a.IdleTimeout > 0 && time.Since(lastWorkTime) >= time.Duration(a.IdleTimeout)*time.Second {
 				fmt.Printf("🏁 Idle timeout reached (%ds without receiving work). Exiting.\n", a.IdleTimeout)

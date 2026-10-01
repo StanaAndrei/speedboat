@@ -54,6 +54,18 @@ func (VerifiedResultRecord) TableName() string {
 	return "verified_results"
 }
 
+// BlacklistedIPRecord represents an IP address blacklisted for cheating or minority divergence.
+type BlacklistedIPRecord struct {
+	IP        string    `gorm:"size:64;not null;primaryKey"`
+	Reason    string    `gorm:"type:text"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+}
+
+// TableName specifies table name for BlacklistedIPRecord.
+func (BlacklistedIPRecord) TableName() string {
+	return "blacklisted_ips"
+}
+
 // SQLStore implements the Store interface using GORM across SQLite, PostgreSQL, and MySQL.
 type SQLStore struct {
 	db      *gorm.DB
@@ -158,7 +170,7 @@ func NewSQLStore(target string) (*SQLStore, error) {
 	}
 
 	// Auto-migrate schema tables
-	if err := db.AutoMigrate(&RawResultRecord{}, &VerifiedResultRecord{}); err != nil {
+	if err := db.AutoMigrate(&RawResultRecord{}, &VerifiedResultRecord{}, &BlacklistedIPRecord{}); err != nil {
 		return nil, fmt.Errorf("failed to migrate database schema: %w", err)
 	}
 
@@ -276,6 +288,49 @@ func (s *SQLStore) GetVerifiedResults(projectID string) (map[string]protocol.Tas
 		}
 	}
 	return results, nil
+}
+
+// BlacklistIP records an IP address as blacklisted.
+func (s *SQLStore) BlacklistIP(ip string, reason string) error {
+	trimmed := strings.TrimSpace(ip)
+	if trimmed == "" {
+		return nil
+	}
+	record := BlacklistedIPRecord{
+		IP:        trimmed,
+		Reason:    reason,
+		CreatedAt: time.Now(),
+	}
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "ip"}},
+		DoUpdates: clause.AssignmentColumns([]string{"reason", "created_at"}),
+	}).Create(&record).Error
+}
+
+// GetBlacklistedIPs retrieves all blacklisted IP addresses.
+func (s *SQLStore) GetBlacklistedIPs() ([]string, error) {
+	var records []BlacklistedIPRecord
+	if err := s.db.Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("failed to retrieve blacklisted IPs: %w", err)
+	}
+	ips := make([]string, len(records))
+	for i, r := range records {
+		ips[i] = r.IP
+	}
+	return ips, nil
+}
+
+// IsIPBlacklisted checks if an IP is blacklisted.
+func (s *SQLStore) IsIPBlacklisted(ip string) (bool, error) {
+	trimmed := strings.TrimSpace(ip)
+	if trimmed == "" {
+		return false, nil
+	}
+	var count int64
+	if err := s.db.Model(&BlacklistedIPRecord{}).Where("ip = ?", trimmed).Count(&count).Error; err != nil {
+		return false, fmt.Errorf("failed to check blacklisted IP: %w", err)
+	}
+	return count > 0, nil
 }
 
 // Close closes the underlying SQL database connection pool.

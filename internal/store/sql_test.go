@@ -245,3 +245,86 @@ func TestSQLStoreInMemory(t *testing.T) {
 		t.Fatalf("unexpected verified results: %+v", verified)
 	}
 }
+
+func TestBlacklistedIPs(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_blacklist.db")
+
+	store, err := NewSQLStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create SQLStore: %v", err)
+	}
+
+	// 1. Initially empty
+	bl, err := store.GetBlacklistedIPs()
+	if err != nil {
+		t.Fatalf("GetBlacklistedIPs failed: %v", err)
+	}
+	if len(bl) != 0 {
+		t.Fatalf("expected 0 blacklisted IPs, got %d", len(bl))
+	}
+
+	isBL, err := store.IsIPBlacklisted("192.168.1.100")
+	if err != nil {
+		t.Fatalf("IsIPBlacklisted failed: %v", err)
+	}
+	if isBL {
+		t.Fatalf("expected 192.168.1.100 not to be blacklisted")
+	}
+
+	// 2. Blacklist IP
+	if err := store.BlacklistIP("192.168.1.100", "Cheating detected on trap task"); err != nil {
+		t.Fatalf("BlacklistIP failed: %v", err)
+	}
+	if err := store.BlacklistIP("10.0.0.50", "Minority result differing from consensus"); err != nil {
+		t.Fatalf("BlacklistIP failed: %v", err)
+	}
+
+	isBL, err = store.IsIPBlacklisted("192.168.1.100")
+	if err != nil || !isBL {
+		t.Fatalf("expected 192.168.1.100 to be blacklisted, err: %v", err)
+	}
+
+	isBL, err = store.IsIPBlacklisted("10.0.0.50")
+	if err != nil || !isBL {
+		t.Fatalf("expected 10.0.0.50 to be blacklisted, err: %v", err)
+	}
+
+	isBL, err = store.IsIPBlacklisted("10.0.0.99")
+	if err != nil || isBL {
+		t.Fatalf("expected 10.0.0.99 not to be blacklisted")
+	}
+
+	bl, err = store.GetBlacklistedIPs()
+	if err != nil {
+		t.Fatalf("GetBlacklistedIPs failed: %v", err)
+	}
+	if len(bl) != 2 {
+		t.Fatalf("expected 2 blacklisted IPs, got %d", len(bl))
+	}
+
+	// 3. Upsert / update reason on same IP (idempotent)
+	if err := store.BlacklistIP("192.168.1.100", "Updated reason"); err != nil {
+		t.Fatalf("BlacklistIP upsert failed: %v", err)
+	}
+	bl, err = store.GetBlacklistedIPs()
+	if err != nil || len(bl) != 2 {
+		t.Fatalf("expected still 2 blacklisted IPs, got %d", len(bl))
+	}
+
+	// 4. Persistence across close & reopen
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	reopenedStore, err := NewSQLStore(dbPath)
+	if err != nil {
+		t.Fatalf("reopening store failed: %v", err)
+	}
+	defer reopenedStore.Close()
+
+	isBL, err = reopenedStore.IsIPBlacklisted("192.168.1.100")
+	if err != nil || !isBL {
+		t.Fatalf("expected 192.168.1.100 to remain blacklisted after reopen")
+	}
+}

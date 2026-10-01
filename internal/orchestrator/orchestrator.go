@@ -29,17 +29,19 @@ type managedTask struct {
 }
 
 type Orchestrator struct {
-	ProjectDir string
-	NatsURL    string
-	Registry   string
-	NoBuild    bool
-	Timeout    time.Duration
-	DBPath     string
-	SendDup    bool
-	Config     *protocol.ProjectConfig
-	nc         *nats.Conn
-	js         nats.JetStreamContext
-	Store      store.Store
+	ProjectDir     string
+	NatsURL        string
+	Registry       string
+	NoBuild        bool
+	Timeout        time.Duration
+	DBPath         string
+	SendDup        bool
+	Config         *protocol.ProjectConfig
+	nc             *nats.Conn
+	js             nats.JetStreamContext
+	Store          store.Store
+	blacklistMu    sync.RWMutex
+	blacklistedIPs map[string]bool
 }
 
 func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild bool, dbPath string, sendDup ...bool) *Orchestrator {
@@ -56,13 +58,51 @@ func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild
 		isSendDup = sendDup[0]
 	}
 	return &Orchestrator{
-		ProjectDir: absDir,
-		NatsURL:    natsURL,
-		Registry:   registry,
-		NoBuild:    noBuild,
-		Timeout:    0, // unlimited by default
-		DBPath:     db,
-		SendDup:    isSendDup,
+		ProjectDir:     absDir,
+		NatsURL:        natsURL,
+		Registry:       registry,
+		NoBuild:        noBuild,
+		Timeout:        0, // unlimited by default
+		DBPath:         db,
+		SendDup:        isSendDup,
+		blacklistedIPs: make(map[string]bool),
+	}
+}
+
+func (o *Orchestrator) isIPBlacklisted(ip string) bool {
+	if ip == "" {
+		return false
+	}
+	o.blacklistMu.RLock()
+	defer o.blacklistMu.RUnlock()
+	return o.blacklistedIPs[ip]
+}
+
+func (o *Orchestrator) blacklistIP(ip, reason string, tasksMap ...map[string]*managedTask) {
+	if ip == "" {
+		return
+	}
+	o.blacklistMu.Lock()
+	if o.blacklistedIPs == nil {
+		o.blacklistedIPs = make(map[string]bool)
+	}
+	already := o.blacklistedIPs[ip]
+	o.blacklistedIPs[ip] = true
+	o.blacklistMu.Unlock()
+
+	if len(tasksMap) > 0 && tasksMap[0] != nil {
+		for _, mt := range tasksMap[0] {
+			delete(mt.assignedIPs, ip)
+		}
+	}
+
+	if !already {
+		fmt.Printf("🚨 [Master] Blacklisted IP %s: %s\n", ip, reason)
+		if o.Store != nil {
+			if err := o.Store.BlacklistIP(ip, reason); err != nil {
+				fmt.Printf("⚠️  [Master] Failed to persist blacklisted IP %s: %v\n", ip, err)
+			}
+		}
 	}
 }
 
@@ -121,6 +161,22 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 		defer dbStore.Close()
 		o.Store = dbStore
+	}
+
+	if o.Store != nil {
+		persistedBlacklist, err := o.Store.GetBlacklistedIPs()
+		if err != nil {
+			fmt.Printf("⚠️  [Master] Failed to load blacklisted IPs from store: %v\n", err)
+		} else {
+			o.blacklistMu.Lock()
+			for _, ip := range persistedBlacklist {
+				o.blacklistedIPs[ip] = true
+			}
+			o.blacklistMu.Unlock()
+			if len(persistedBlacklist) > 0 {
+				fmt.Printf("   🚫 Loaded %d blacklisted IPs from database\n", len(persistedBlacklist))
+			}
+		}
 	}
 
 	// 5. Run task generator
@@ -314,6 +370,12 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 
 		workerIP := getWorkerIP(req.IP, req.WorkerID)
+		if o.isIPBlacklisted(workerIP) {
+			respBytes, _ := json.Marshal(protocol.TaskResponse{Status: "blacklisted"})
+			_ = msg.Respond(respBytes)
+			return
+		}
+
 		workerKey := workerIP
 		if o.SendDup && req.WorkerID != "" {
 			workerKey = req.WorkerID
@@ -351,10 +413,6 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		var selected *managedTask
 
 		isEligible := func(mt *managedTask) bool {
-			if _, verified := verifiedResults[mt.taskID]; verified {
-				return false
-			}
-
 			if o.SendDup {
 				activeCount := 0
 				for key, t := range mt.assignedIPs {
@@ -377,15 +435,29 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			}
 		}
 
-		// Selection pass 1: Prefer tasks this workerIP has not completed yet
+		// Pass 1: Prioritize unverified tasks this worker has not completed
 		for _, mt := range tasksList {
-			if !mt.completedIPs[workerIP] && isEligible(mt) {
-				selected = mt
-				break
+			if _, verified := verifiedResults[mt.taskID]; !verified {
+				if !mt.completedIPs[workerIP] && isEligible(mt) {
+					selected = mt
+					break
+				}
 			}
 		}
 
-		// Selection pass 2: If send-dup is enabled, allow tasks this workerIP already completed
+		// Pass 2: Remaining redundant runs of verified tasks as TRAP TASKS
+		if selected == nil {
+			for _, mt := range tasksList {
+				if _, verified := verifiedResults[mt.taskID]; verified {
+					if !mt.completedIPs[workerIP] && isEligible(mt) {
+						selected = mt
+						break
+					}
+				}
+			}
+		}
+
+		// Pass 3: If send-dup is enabled, allow tasks this workerIP already completed
 		if selected == nil && o.SendDup {
 			for _, mt := range tasksList {
 				if isEligible(mt) {
@@ -397,6 +469,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 
 		if selected != nil {
 			selected.assignedIPs[workerKey] = time.Now()
+			if _, isVerified := verifiedResults[selected.taskID]; isVerified {
+				fmt.Printf("   🪤 Dispatched task %s as TRAP to worker %s (IP: %s)\n",
+					selected.taskID, req.WorkerID, workerIP)
+			}
 			respBytes, _ := json.Marshal(protocol.TaskResponse{
 				Status: "ok",
 				Task:   selected.rawBytes,
@@ -485,7 +561,7 @@ func (o *Orchestrator) collectAndVerifyResults(
 	taskIPs map[string]map[string]bool,
 ) (map[string]protocol.TaskResult, error) {
 	totalDistinct := len(taskOrder)
-	if len(verifiedResults) >= totalDistinct {
+	if len(verifiedResults) >= totalDistinct && tasksMap == nil {
 		return verifiedResults, nil
 	}
 
@@ -504,6 +580,111 @@ func (o *Orchestrator) collectAndVerifyResults(
 	var mtx sync.Mutex
 	doneCh := make(chan struct{})
 	var doneOnce sync.Once
+
+	var (
+		graceTimer   *time.Timer
+		graceTimerMu sync.Mutex
+	)
+
+	startGraceTimer := func() {
+		graceTimerMu.Lock()
+		defer graceTimerMu.Unlock()
+		if graceTimer != nil {
+			graceTimer.Stop()
+		}
+		graceTimer = time.AfterFunc(1500*time.Millisecond, func() {
+			mtx.Lock()
+			defer mtx.Unlock()
+
+			if len(verifiedResults) < totalDistinct {
+				return
+			}
+			if taskMu != nil {
+				taskMu.Lock()
+				hasFlight := false
+				for _, mt := range tasksMap {
+					if len(mt.assignedIPs) > 0 {
+						hasFlight = true
+						break
+					}
+				}
+				if !hasFlight {
+					if isDone != nil {
+						*isDone = true
+					}
+					doneOnce.Do(func() {
+						close(doneCh)
+					})
+				}
+				taskMu.Unlock()
+			} else {
+				if isDone != nil {
+					*isDone = true
+				}
+				doneOnce.Do(func() {
+					close(doneCh)
+				})
+			}
+		})
+	}
+
+	defer func() {
+		graceTimerMu.Lock()
+		if graceTimer != nil {
+			graceTimer.Stop()
+		}
+		graceTimerMu.Unlock()
+	}()
+
+	checkCompletion := func() {
+		if len(verifiedResults) < totalDistinct {
+			return
+		}
+		if taskMu == nil || tasksMap == nil {
+			if isDone != nil {
+				*isDone = true
+			}
+			doneOnce.Do(func() {
+				close(doneCh)
+			})
+			return
+		}
+
+		taskMu.Lock()
+		allMet := true
+		inFlight := false
+		for _, mt := range tasksMap {
+			if len(mt.assignedIPs) > 0 {
+				inFlight = true
+			}
+			if mt.completedCount < reqRedundancy {
+				allMet = false
+			}
+		}
+		taskMu.Unlock()
+
+		if allMet {
+			graceTimerMu.Lock()
+			if graceTimer != nil {
+				graceTimer.Stop()
+			}
+			graceTimerMu.Unlock()
+
+			taskMu.Lock()
+			if isDone != nil {
+				*isDone = true
+			}
+			taskMu.Unlock()
+			doneOnce.Do(func() {
+				close(doneCh)
+			})
+		} else if !inFlight {
+			startGraceTimer()
+		}
+	}
+
+	checkCompletion()
+
 	subj := transport.ResultsSubject(cfg.Name)
 	sub, err := o.nc.Subscribe(subj, func(msg *nats.Msg) {
 		var res protocol.TaskResult
@@ -522,26 +703,49 @@ func (o *Orchestrator) collectAndVerifyResults(
 			workerKey = res.WorkerID
 		}
 
-		taskMu.Lock()
-		if mt, ok := tasksMap[res.TaskID]; ok {
-			if _, assigned := mt.assignedIPs[workerKey]; assigned {
-				delete(mt.assignedIPs, workerKey)
-				if res.Status == "ok" {
-					mt.completedCount++
-				}
-			} else if res.Status != "ok" && mt.completedCount > 0 {
-				mt.completedCount--
-			}
-			if res.Status == "ok" {
-				mt.completedIPs[workerIP] = true
-			}
+		// Discard result if worker is blacklisted
+		if o.isIPBlacklisted(workerIP) {
+			fmt.Printf("⛔ [Master] Discarding result for task %s from blacklisted IP %s (Worker: %s)\n", res.TaskID, workerIP, res.WorkerID)
+			return
 		}
-		taskMu.Unlock()
+
+		if taskMu != nil {
+			taskMu.Lock()
+			if mt, ok := tasksMap[res.TaskID]; ok {
+				if _, assigned := mt.assignedIPs[workerKey]; assigned {
+					delete(mt.assignedIPs, workerKey)
+					if res.Status == "ok" {
+						mt.completedCount++
+					}
+				} else if res.Status != "ok" && mt.completedCount > 0 {
+					mt.completedCount--
+				}
+				if res.Status == "ok" {
+					mt.completedIPs[workerIP] = true
+				}
+			}
+			taskMu.Unlock()
+		}
 
 		mtx.Lock()
 		defer mtx.Unlock()
 
-		if _, alreadyVerified := verifiedResults[res.TaskID]; alreadyVerified {
+		if verified, alreadyVerified := verifiedResults[res.TaskID]; alreadyVerified {
+			// This is a TRAP TASK result (or late redundant result after consensus)
+			normOutput := normalizeJSON(res.Output)
+			expectedOutput := normalizeJSON(verified.Output)
+
+			if res.Status != "ok" || normOutput != expectedOutput {
+				reason := fmt.Sprintf("Trap task %s output mismatch: expected %s, got %s (status: %s)",
+					res.TaskID, expectedOutput, normOutput, res.Status)
+				o.blacklistIP(workerIP, reason, tasksMap)
+			} else {
+				fmt.Printf("   🪤 Task %s trap PASSED by worker %s (IP: %s)\n", res.TaskID, res.WorkerID, workerIP)
+				if o.Store != nil {
+					_ = o.Store.SaveRawResult(cfg.Name, res)
+				}
+			}
+			checkCompletion()
 			return
 		}
 
@@ -578,12 +782,7 @@ func (o *Orchestrator) collectAndVerifyResults(
 			totalCount += len(matching)
 		}
 
-		reachedConsensus := false
-		if o.SendDup {
-			reachedConsensus = totalCount >= reqRedundancy && matchCount >= threshold
-		} else {
-			reachedConsensus = distinctIPCount >= reqRedundancy && matchCount >= threshold
-		}
+		reachedConsensus := matchCount >= threshold
 
 		if reachedConsensus {
 			verifiedResults[res.TaskID] = res
@@ -593,21 +792,27 @@ func (o *Orchestrator) collectAndVerifyResults(
 				}
 			}
 			if o.SendDup {
-				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d/%d results | Total Verified: %d/%d)\n",
-					res.TaskID, matchCount, threshold, totalCount, reqRedundancy, len(verifiedResults), totalDistinct)
+				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d results | Total Verified: %d/%d)\n",
+					res.TaskID, matchCount, threshold, totalCount, len(verifiedResults), totalDistinct)
 			} else {
-				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d/%d distinct IPs | Total Verified: %d/%d)\n",
-					res.TaskID, matchCount, threshold, distinctIPCount, reqRedundancy, len(verifiedResults), totalDistinct)
+				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d distinct IPs | Total Verified: %d/%d)\n",
+					res.TaskID, matchCount, threshold, distinctIPCount, len(verifiedResults), totalDistinct)
 			}
-			if len(verifiedResults) >= totalDistinct {
-				taskMu.Lock()
-				*isDone = true
-				taskMu.Unlock()
-				doneOnce.Do(func() {
-					close(doneCh)
-				})
+
+			// Blacklist any worker that submitted an output differing from the consensus (minority result)
+			for otherNorm, otherList := range taskOutputs[res.TaskID] {
+				if otherNorm != normOutput {
+					for _, badRes := range otherList {
+						badIP := getWorkerIP(badRes.IP, badRes.WorkerID)
+						reason := fmt.Sprintf("Minority result on task %s: got %s, consensus was %s",
+							res.TaskID, string(badRes.Output), string(res.Output))
+						o.blacklistIP(badIP, reason, tasksMap)
+					}
+				}
 			}
 		}
+
+		checkCompletion()
 	})
 
 	if err != nil {
