@@ -614,5 +614,222 @@ func TestMinorityCheaterBlacklistedBeforeConsensus(t *testing.T) {
 	}
 }
 
+func TestLoadProjectConfigIterations(t *testing.T) {
+	cfg, err := protocol.LoadProjectConfig("../../examples/prime-cnt")
+	if err != nil {
+		t.Fatalf("failed to load prime-cnt project config: %v", err)
+	}
+	if cfg.Verification.Iterations != 5 {
+		t.Fatalf("expected iterations to be 5, got %d", cfg.Verification.Iterations)
+	}
+}
+
+func TestRedundancyEscalationMultiplication(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "escalate_test.db")
+	sqlStore, err := store.NewSQLStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer sqlStore.Close()
+
+	orch := NewOrchestrator(".", "nats://localhost:4222", "registry:5000", true, dbPath)
+	orch.Store = sqlStore
+
+	baseRedundancy := 3
+	baseThreshold := 2
+	maxIterations := 3
+
+	taskID := "task-0001"
+	mt := &managedTask{
+		taskID:       taskID,
+		rawBytes:     []byte(`{"task_id":"task-0001"}`),
+		assignedIPs:  make(map[string]time.Time),
+		completedIPs: make(map[string]bool),
+		iteration:    1,
+	}
+
+	taskOutputs := make(map[string][]protocol.TaskResult)
+
+	// Step 1: Iteration 1 (R=3, C=2). Three workers return different outputs: A, B, C
+	outputs := []string{`{"val": "A"}`, `{"val": "B"}`, `{"val": "C"}`}
+	workers := []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}
+
+	for i := 0; i < 3; i++ {
+		res := protocol.TaskResult{
+			TaskID: taskID, Status: "ok", Output: json.RawMessage(outputs[i]), IP: workers[i],
+		}
+		norm := normalizeJSON(res.Output)
+		taskOutputs[norm] = append(taskOutputs[norm], res)
+		mt.completedIPs[workers[i]] = true
+		mt.completedCount++
+	}
+
+	// Check: All 3 completed, none reached threshold 2 * 1 = 2
+	effThresh1 := baseThreshold * mt.iteration
+	effRed1 := baseRedundancy * mt.iteration
+	for _, m := range taskOutputs {
+		if len(m) >= effThresh1 {
+			t.Fatalf("unexpected consensus in iteration 1")
+		}
+	}
+	if mt.completedCount < effRed1 {
+		t.Fatalf("expected completedCount == 3")
+	}
+
+	// Escalate to iteration 2!
+	if mt.iteration < maxIterations {
+		mt.iteration++
+	}
+	if mt.iteration != 2 {
+		t.Fatalf("expected iteration to escalate to 2, got %d", mt.iteration)
+	}
+
+	// Effective redundancy is now 3 * 2 = 6, consensus threshold is 2 * 2 = 4
+	effThresh2 := baseThreshold * mt.iteration
+	effRed2 := baseRedundancy * mt.iteration
+	if effThresh2 != 4 || effRed2 != 6 {
+		t.Fatalf("expected effThreshold=4, effRedundancy=6, got %d and %d", effThresh2, effRed2)
+	}
+
+	// Task should now be eligible for 3 more workers (up to 6 completions)
+	isEligible := func(workerIP string) bool {
+		return !mt.completedIPs[workerIP] && mt.completedCount < effRed2
+	}
+	if !isEligible("10.0.0.4") {
+		t.Fatalf("expected new worker 10.0.0.4 to be eligible in iteration 2")
+	}
+
+	// Step 2: In iteration 2, workers 4, 5, 6 all return output "A"
+	newWorkers := []string{"10.0.0.4", "10.0.0.5", "10.0.0.6"}
+	for _, w := range newWorkers {
+		res := protocol.TaskResult{
+			TaskID: taskID, Status: "ok", Output: json.RawMessage(`{"val": "A"}`), IP: w,
+		}
+		norm := normalizeJSON(res.Output)
+		taskOutputs[norm] = append(taskOutputs[norm], res)
+		mt.completedIPs[w] = true
+		mt.completedCount++
+	}
+
+	// Now output "A" has 1 (from iter 1) + 3 (from iter 2) = 4 votes!
+	normA := normalizeJSON(json.RawMessage(`{"val": "A"}`))
+	if len(taskOutputs[normA]) < effThresh2 {
+		t.Fatalf("expected consensus on A with 4 votes, got %d", len(taskOutputs[normA]))
+	}
+
+	// Consensus achieved on A! Resolve minorities across ALL iterations:
+	for norm, list := range taskOutputs {
+		if norm != normA {
+			for _, badRes := range list {
+				orch.blacklistIP(badRes.IP, "Minority divergence in escalation", map[string]*managedTask{taskID: mt})
+			}
+		}
+	}
+
+	// Worker 2 (B) and Worker 3 (C) from iteration 1 MUST be blacklisted!
+	if !orch.isIPBlacklisted("10.0.0.2") {
+		t.Fatalf("expected worker 2 (10.0.0.2) to be blacklisted")
+	}
+	if !orch.isIPBlacklisted("10.0.0.3") {
+		t.Fatalf("expected worker 3 (10.0.0.3) to be blacklisted")
+	}
+
+	// Worker 1 (A from iter 1) and Workers 4, 5, 6 (A from iter 2) must NOT be blacklisted!
+	if orch.isIPBlacklisted("10.0.0.1") || orch.isIPBlacklisted("10.0.0.4") {
+		t.Fatalf("honest workers who agreed with consensus should not be blacklisted")
+	}
+}
+
+type mockEngine struct {
+	output []byte
+	err    error
+}
+
+func (m *mockEngine) Name() string                                              { return "docker" }
+func (m *mockEngine) IsAvailable() bool                                         { return true }
+func (m *mockEngine) PullImage(ctx context.Context, image string) error         { return nil }
+func (m *mockEngine) Execute(ctx context.Context, image string, input []byte) ([]byte, error) {
+	return m.output, m.err
+}
+
+func TestMasterLocalExecutionFallbackAndBlacklist(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "fallback_test.db")
+	sqlStore, err := store.NewSQLStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer sqlStore.Close()
+
+	orch := NewOrchestrator(".", "nats://localhost:4222", "registry:5000", true, dbPath)
+	orch.Store = sqlStore
+	orch.Config = &protocol.ProjectConfig{Name: "prime-counter"}
+
+	// Inject mock docker engine that returns ground truth {"val": 42}
+	orch.Engine = &mockEngine{
+		output: []byte(`{"val": 42}`),
+	}
+
+	taskID := "task-0001"
+	mt := &managedTask{
+		taskID:       taskID,
+		rawBytes:     []byte(`{"task_id":"task-0001"}`),
+		assignedIPs:  make(map[string]time.Time),
+		completedIPs: make(map[string]bool),
+		iteration:    1,
+	}
+
+	// 3 workers disagree:
+	// Worker 1: {"val": 42} (matches true math)
+	// Worker 2: {"val": 999} (liar)
+	// Worker 3: {"val": 888} (liar)
+	taskOutputs := make(map[string][]protocol.TaskResult)
+	res1 := protocol.TaskResult{TaskID: taskID, Status: "ok", Output: json.RawMessage(`{"val": 42}`), IP: "10.0.0.1"}
+	res2 := protocol.TaskResult{TaskID: taskID, Status: "ok", Output: json.RawMessage(`{"val": 999}`), IP: "10.0.0.2"}
+	res3 := protocol.TaskResult{TaskID: taskID, Status: "ok", Output: json.RawMessage(`{"val": 888}`), IP: "10.0.0.3"}
+	taskOutputs[normalizeJSON(res1.Output)] = append(taskOutputs[normalizeJSON(res1.Output)], res1)
+	taskOutputs[normalizeJSON(res2.Output)] = append(taskOutputs[normalizeJSON(res2.Output)], res2)
+	taskOutputs[normalizeJSON(res3.Output)] = append(taskOutputs[normalizeJSON(res3.Output)], res3)
+
+	// Max iterations is 1, so iteration 1 exhaustion triggers local fallback
+	localRes, err := orch.executeTaskLocally(context.Background(), mt.rawBytes, "prime-counter:latest")
+	if err != nil {
+		t.Fatalf("executeTaskLocally failed: %v", err)
+	}
+
+	truthNorm := normalizeJSON(localRes.Output)
+	if truthNorm != `{"val":42}` {
+		t.Fatalf("unexpected local truth: %s", truthNorm)
+	}
+
+	// Blacklist any workers whose output differed from local truth
+	for norm, list := range taskOutputs {
+		if norm != truthNorm {
+			for _, badRes := range list {
+				orch.blacklistIP(badRes.IP, "Diverged from master local ground truth", map[string]*managedTask{taskID: mt})
+			}
+		}
+	}
+
+	// Worker 2 and 3 MUST be blacklisted
+	if !orch.isIPBlacklisted("10.0.0.2") {
+		t.Fatalf("expected liar worker 10.0.0.2 to be blacklisted")
+	}
+	if !orch.isIPBlacklisted("10.0.0.3") {
+		t.Fatalf("expected liar worker 10.0.0.3 to be blacklisted")
+	}
+	isBL, err := sqlStore.IsIPBlacklisted("10.0.0.2")
+	if err != nil || !isBL {
+		t.Fatalf("expected liar worker 10.0.0.2 to be blacklisted in DB")
+	}
+
+	// Worker 1 agreed with local truth: must NOT be blacklisted
+	if orch.isIPBlacklisted("10.0.0.1") {
+		t.Fatalf("worker 1 should not be blacklisted")
+	}
+}
+
+
 
 

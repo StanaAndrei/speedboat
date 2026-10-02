@@ -31,6 +31,7 @@ type ScriptConfig struct { // runtime and source for generator or reducer script
 type VerificationConfig struct {
 	Redundancy         int `yaml:"redundancy" json:"redundancy"`
 	ConsensusThreshold int `yaml:"consensus_threshold" json:"consensus_threshold"`
+	Iterations         int `yaml:"iterations" json:"iterations"`
 }
 
 type Task struct {
@@ -60,6 +61,7 @@ type ProjectAnnouncement struct {
 	TotalTasks         int    `json:"total_tasks,omitempty"`
 	Redundancy         int    `json:"redundancy,omitempty"`
 	ConsensusThreshold int    `json:"consensus_threshold,omitempty"`
+	Iterations         int    `json:"iterations,omitempty"`
 	CreatedAt          int64  `json:"created_at,omitempty"`
 }
 
@@ -128,6 +130,9 @@ func LoadProjectConfig(projectDir string) (*ProjectConfig, error) {
 	}
 	if cfg.Verification.ConsensusThreshold > cfg.Verification.Redundancy {
 		cfg.Verification.ConsensusThreshold = cfg.Verification.Redundancy
+	}
+	if cfg.Verification.Iterations <= 0 {
+		cfg.Verification.Iterations = 1
 	}
 	return &cfg, nil
 }

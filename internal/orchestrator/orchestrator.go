@@ -14,6 +14,7 @@ import (
 
 	"speedboat/internal/builder"
 	"speedboat/internal/protocol"
+	"speedboat/internal/runtime"
 	"speedboat/internal/store"
 	"speedboat/internal/transport"
 
@@ -26,6 +27,7 @@ type managedTask struct {
 	assignedIPs    map[string]time.Time
 	completedIPs   map[string]bool
 	completedCount int
+	iteration      int
 }
 
 type Orchestrator struct {
@@ -42,6 +44,7 @@ type Orchestrator struct {
 	Store          store.Store
 	blacklistMu    sync.RWMutex
 	blacklistedIPs map[string]bool
+	Engine         runtime.Engine
 }
 
 func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild bool, dbPath string, sendDup ...bool) *Orchestrator {
@@ -106,6 +109,61 @@ func (o *Orchestrator) blacklistIP(ip, reason string, tasksMap ...map[string]*ma
 	}
 }
 
+func (o *Orchestrator) executeTaskLocally(ctx context.Context, taskBytes []byte, fallbackImage string) (protocol.TaskResult, error) {
+	if o.Engine == nil {
+		o.Engine = runtime.NewDockerEngine()
+	}
+
+	var task protocol.Task
+	if err := json.Unmarshal(taskBytes, &task); err != nil {
+		return protocol.TaskResult{}, fmt.Errorf("failed to unmarshal task: %w", err)
+	}
+
+	image := task.Image
+	if image == "" {
+		image = fallbackImage
+	}
+
+	fmt.Printf("👑 [Master] Triggering local Docker execution for task %s (image: %s)...\n", task.TaskID, image)
+
+	if err := o.Engine.PullImage(ctx, image); err != nil {
+		fmt.Printf("⚠️  [Master] Local image pull warning: %v\n", err)
+	}
+
+	stdoutBytes, err := o.Engine.Execute(ctx, image, taskBytes)
+	if err != nil {
+		return protocol.TaskResult{}, fmt.Errorf("local execution failed: %w", err)
+	}
+
+	var res protocol.TaskResult
+	if err := json.Unmarshal(stdoutBytes, &res); err != nil || len(res.Output) == 0 {
+		res = protocol.TaskResult{
+			TaskID:    task.TaskID,
+			ProjectID: o.Config.Name,
+			Status:    "ok",
+			Output:    json.RawMessage(stdoutBytes),
+			WorkerID:  "master-local",
+			IP:        "127.0.0.1",
+		}
+	} else {
+		if res.TaskID == "" {
+			res.TaskID = task.TaskID
+		}
+		res.ProjectID = o.Config.Name
+		if res.WorkerID == "" {
+			res.WorkerID = "master-local"
+		}
+		if res.IP == "" {
+			res.IP = "127.0.0.1"
+		}
+		if res.Status == "" {
+			res.Status = "ok"
+		}
+	}
+
+	return res, nil
+}
+
 func (o *Orchestrator) Run(ctx context.Context) error {
 	// 1. Load project config
 	cfg, err := protocol.LoadProjectConfig(o.ProjectDir)
@@ -115,8 +173,8 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	o.Config = cfg
 
 	fmt.Printf("🚀 Speedboat Master: Project '%s' (v%s)\n", cfg.Name, cfg.Version)
-	fmt.Printf("   Redundancy: %d | Consensus Threshold: %d | Send Duplicate: %v\n",
-		cfg.Verification.Redundancy, cfg.Verification.ConsensusThreshold, o.SendDup)
+	fmt.Printf("   Redundancy: %d | Consensus Threshold: %d | Iterations: %d | Send Duplicate: %v\n",
+		cfg.Verification.Redundancy, cfg.Verification.ConsensusThreshold, cfg.Verification.Iterations, o.SendDup)
 
 	// 2. Build & push container img
 	var imageTag string
@@ -202,6 +260,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		TotalTasks:         totalTasks,
 		Redundancy:         cfg.Verification.Redundancy,
 		ConsensusThreshold: cfg.Verification.ConsensusThreshold,
+		Iterations:         cfg.Verification.Iterations,
 		CreatedAt:          time.Now().Unix(),
 	}
 	annBytes, _ := json.Marshal(announcement)
@@ -282,6 +341,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			rawBytes:     augmentedBytes,
 			assignedIPs:  make(map[string]time.Time),
 			completedIPs: make(map[string]bool),
+			iteration:    1,
 		}
 		tasksMap[taskID] = mt
 
@@ -413,6 +473,11 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		var selected *managedTask
 
 		isEligible := func(mt *managedTask) bool {
+			iter := mt.iteration
+			if iter <= 0 {
+				iter = 1
+			}
+			effRedundancy := redundancy * iter
 			if o.SendDup {
 				activeCount := 0
 				for key, t := range mt.assignedIPs {
@@ -420,7 +485,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 						activeCount++
 					}
 				}
-				return mt.completedCount+activeCount < redundancy
+				return mt.completedCount+activeCount < effRedundancy
 			} else {
 				if mt.completedIPs[workerIP] {
 					return false
@@ -431,7 +496,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 						activeOther++
 					}
 				}
-				return len(mt.completedIPs)+activeOther < redundancy
+				return len(mt.completedIPs)+activeOther < effRedundancy
 			}
 		}
 
@@ -576,6 +641,10 @@ func (o *Orchestrator) collectAndVerifyResults(
 	if threshold > reqRedundancy {
 		threshold = reqRedundancy
 	}
+	maxIterations := cfg.Verification.Iterations
+	if maxIterations <= 0 {
+		maxIterations = 1
+	}
 
 	var mtx sync.Mutex
 	doneCh := make(chan struct{})
@@ -586,6 +655,106 @@ func (o *Orchestrator) collectAndVerifyResults(
 		graceTimerMu sync.Mutex
 	)
 
+	checkTaskConsensusOrEscalation := func(mt *managedTask) {
+		if _, verified := verifiedResults[mt.taskID]; verified {
+			return
+		}
+		k := mt.iteration
+		if k <= 0 {
+			k = 1
+			mt.iteration = 1
+		}
+		effThreshold := threshold * k
+		effRedundancy := reqRedundancy * k
+
+		var consensusNorm string
+		var consensusRes protocol.TaskResult
+		foundConsensus := false
+		for norm, matches := range taskOutputs[mt.taskID] {
+			if len(matches) >= effThreshold {
+				consensusNorm = norm
+				consensusRes = matches[0]
+				foundConsensus = true
+				break
+			}
+		}
+
+		if foundConsensus {
+			verifiedResults[mt.taskID] = consensusRes
+			if o.Store != nil {
+				_ = o.Store.SaveVerifiedResult(cfg.Name, consensusRes)
+			}
+			matchCount := len(taskOutputs[mt.taskID][consensusNorm])
+			totalCount := 0
+			for _, m := range taskOutputs[mt.taskID] {
+				totalCount += len(m)
+			}
+			distinctIPCount := len(taskIPs[mt.taskID])
+			if o.SendDup {
+				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d results in iteration %d | Total Verified: %d/%d)\n",
+					mt.taskID, matchCount, effThreshold, totalCount, k, len(verifiedResults), totalDistinct)
+			} else {
+				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d distinct IPs in iteration %d | Total Verified: %d/%d)\n",
+					mt.taskID, matchCount, effThreshold, distinctIPCount, k, len(verifiedResults), totalDistinct)
+			}
+
+			// Blacklist any worker that submitted an output differing from the consensus (minority result)
+			for otherNorm, otherList := range taskOutputs[mt.taskID] {
+				if otherNorm != consensusNorm {
+					for _, badRes := range otherList {
+						badIP := getWorkerIP(badRes.IP, badRes.WorkerID)
+						reason := fmt.Sprintf("Minority result on task %s: got %s, consensus was %s",
+							mt.taskID, string(badRes.Output), string(consensusRes.Output))
+						o.blacklistIP(badIP, reason, tasksMap)
+					}
+				}
+			}
+			return
+		}
+
+		// If no consensus reached, check if current iteration is exhausted
+		taskMu.Lock()
+		inFlightForTask := len(mt.assignedIPs) > 0
+		completed := mt.completedCount
+		taskMu.Unlock()
+
+		if completed >= effRedundancy && !inFlightForTask {
+			if k < maxIterations {
+				mt.iteration++
+				fmt.Printf("🔄 [Master] Task %s reached redundancy limit (%d) in iteration %d without consensus. Escalating to iteration %d/%d (Redundancy: %d, Threshold: %d)\n",
+					mt.taskID, effRedundancy, k, mt.iteration, maxIterations, reqRedundancy*mt.iteration, threshold*mt.iteration)
+			} else {
+				// Reached max iterations without consensus -> Fallback to local master Docker execution!
+				fmt.Printf("⚠️  [Master] Task %s reached max iterations (%d) without consensus. Falling back to local master Docker execution...\n",
+					mt.taskID, maxIterations)
+				localRes, err := o.executeTaskLocally(ctx, mt.rawBytes, cfg.Container.ImageTag)
+				if err == nil {
+					verifiedResults[mt.taskID] = localRes
+					if o.Store != nil {
+						_ = o.Store.SaveVerifiedResult(cfg.Name, localRes)
+					}
+					fmt.Printf("👑 [Master] Local execution established ground truth for task %s: %s\n",
+						mt.taskID, string(localRes.Output))
+					canonical := normalizeJSON(localRes.Output)
+					for otherNorm, otherList := range taskOutputs[mt.taskID] {
+						if otherNorm != canonical {
+							for _, badRes := range otherList {
+								badIP := getWorkerIP(badRes.IP, badRes.WorkerID)
+								reason := fmt.Sprintf("Diverged from master local ground truth on task %s: got %s, ground truth was %s",
+									mt.taskID, string(badRes.Output), string(localRes.Output))
+								o.blacklistIP(badIP, reason, tasksMap)
+							}
+						}
+					}
+				} else {
+					fmt.Printf("❌ [Master] Local execution failed for task %s: %v\n", mt.taskID, err)
+				}
+			}
+		}
+	}
+
+	var checkCompletion func()
+
 	startGraceTimer := func() {
 		graceTimerMu.Lock()
 		defer graceTimerMu.Unlock()
@@ -595,6 +764,10 @@ func (o *Orchestrator) collectAndVerifyResults(
 		graceTimer = time.AfterFunc(1500*time.Millisecond, func() {
 			mtx.Lock()
 			defer mtx.Unlock()
+
+			if checkCompletion != nil {
+				checkCompletion()
+			}
 
 			if len(verifiedResults) < totalDistinct {
 				return
@@ -636,7 +809,15 @@ func (o *Orchestrator) collectAndVerifyResults(
 		graceTimerMu.Unlock()
 	}()
 
-	checkCompletion := func() {
+	checkCompletion = func() {
+		if tasksMap != nil {
+			for _, mt := range tasksMap {
+				if _, verified := verifiedResults[mt.taskID]; !verified {
+					checkTaskConsensusOrEscalation(mt)
+				}
+			}
+		}
+
 		if len(verifiedResults) < totalDistinct {
 			return
 		}
@@ -657,7 +838,11 @@ func (o *Orchestrator) collectAndVerifyResults(
 			if len(mt.assignedIPs) > 0 {
 				inFlight = true
 			}
-			if mt.completedCount < reqRedundancy {
+			iter := mt.iteration
+			if iter <= 0 {
+				iter = 1
+			}
+			if mt.completedCount < reqRedundancy*iter {
 				allMet = false
 			}
 		}
@@ -775,41 +960,8 @@ func (o *Orchestrator) collectAndVerifyResults(
 		}
 		taskOutputs[res.TaskID][normOutput] = append(taskOutputs[res.TaskID][normOutput], res)
 
-		matchCount := len(taskOutputs[res.TaskID][normOutput])
-		distinctIPCount := len(taskIPs[res.TaskID])
-		totalCount := 0
-		for _, matching := range taskOutputs[res.TaskID] {
-			totalCount += len(matching)
-		}
-
-		reachedConsensus := matchCount >= threshold
-
-		if reachedConsensus {
-			verifiedResults[res.TaskID] = res
-			if o.Store != nil {
-				if err := o.Store.SaveVerifiedResult(cfg.Name, res); err != nil {
-					fmt.Printf("⚠️  [Master] Failed to persist verified result for task %s: %v\n", res.TaskID, err)
-				}
-			}
-			if o.SendDup {
-				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d results | Total Verified: %d/%d)\n",
-					res.TaskID, matchCount, threshold, totalCount, len(verifiedResults), totalDistinct)
-			} else {
-				fmt.Printf("   ✅ Task %s verified! (Consensus: %d/%d matches from %d distinct IPs | Total Verified: %d/%d)\n",
-					res.TaskID, matchCount, threshold, distinctIPCount, len(verifiedResults), totalDistinct)
-			}
-
-			// Blacklist any worker that submitted an output differing from the consensus (minority result)
-			for otherNorm, otherList := range taskOutputs[res.TaskID] {
-				if otherNorm != normOutput {
-					for _, badRes := range otherList {
-						badIP := getWorkerIP(badRes.IP, badRes.WorkerID)
-						reason := fmt.Sprintf("Minority result on task %s: got %s, consensus was %s",
-							res.TaskID, string(badRes.Output), string(res.Output))
-						o.blacklistIP(badIP, reason, tasksMap)
-					}
-				}
-			}
+		if mt, ok := tasksMap[res.TaskID]; ok {
+			checkTaskConsensusOrEscalation(mt)
 		}
 
 		checkCompletion()

@@ -12,3 +12,4 @@ reducer:
 verification:
   redundancy: 3
   consensus_threshold: 2
+  iterations: 5
