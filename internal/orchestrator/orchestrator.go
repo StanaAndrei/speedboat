@@ -810,11 +810,9 @@ func (o *Orchestrator) collectAndVerifyResults(
 	}()
 
 	checkCompletion = func() {
-		if tasksMap != nil {
-			for _, mt := range tasksMap {
-				if _, verified := verifiedResults[mt.taskID]; !verified {
-					checkTaskConsensusOrEscalation(mt)
-				}
+		for _, mt := range tasksMap {
+			if _, verified := verifiedResults[mt.taskID]; !verified {
+				checkTaskConsensusOrEscalation(mt)
 			}
 		}
 
@@ -1053,4 +1051,3 @@ func getWorkerIP(resIP, workerID string) string {
 	}
 	return workerID
 }
-
