@@ -37,3 +37,51 @@ func TestMasterCLISendDupFlag(t *testing.T) {
 		}
 	})
 }
+
+func TestMasterCLIBuildWasmCommand(t *testing.T) {
+	t.Run("default flags on build-wasm", func(t *testing.T) {
+		var cli CLI
+		parser, err := kong.New(&cli)
+		if err != nil {
+			t.Fatalf("failed to create kong parser: %v", err)
+		}
+		kctx, err := parser.Parse([]string{"build-wasm"})
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+		if kctx.Command() != "build-wasm" {
+			t.Fatalf("expected command build-wasm, got %s", kctx.Command())
+		}
+		if cli.BuildWasm.ProjectDir != "." {
+			t.Errorf("expected default project dir '.', got %q", cli.BuildWasm.ProjectDir)
+		}
+		if !cli.BuildWasm.WASI {
+			t.Errorf("expected default WASI to be true, got false")
+		}
+		if cli.BuildWasm.Output != "" {
+			t.Errorf("expected default Output to be empty, got %q", cli.BuildWasm.Output)
+		}
+	})
+
+	t.Run("parse with explicit flags and custom output", func(t *testing.T) {
+		var cli CLI
+		parser, err := kong.New(&cli)
+		if err != nil {
+			t.Fatalf("failed to create kong parser: %v", err)
+		}
+		_, err = parser.Parse([]string{"build-wasm", "-p", "examples/prime-cnt", "--wasi", "-o", "dist/custom.wasm"})
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+		if cli.BuildWasm.ProjectDir != "examples/prime-cnt" {
+			t.Errorf("expected project dir 'examples/prime-cnt', got %q", cli.BuildWasm.ProjectDir)
+		}
+		if !cli.BuildWasm.WASI {
+			t.Errorf("expected WASI to be true, got false")
+		}
+		if cli.BuildWasm.Output != "dist/custom.wasm" {
+			t.Errorf("expected output 'dist/custom.wasm', got %q", cli.BuildWasm.Output)
+		}
+	})
+}
+

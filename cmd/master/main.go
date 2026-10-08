@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"speedboat/internal/builder"
 	"speedboat/internal/orchestrator"
 	"syscall"
 
@@ -25,6 +26,12 @@ type CLI struct {
 		ProjectDir string `short:"p" help:"Path to project directory" default:"."`
 		Registry   string `help:"Docker registry URL" default:"localhost:5000" env:"DOCKER_REGISTRY"`
 	} `cmd:"" help:"Bake Docker/WASM artifacts without starting the grid."`
+
+	BuildWasm struct {
+		ProjectDir string `short:"p" name:"project" help:"Path to project directory containing project.yaml" default:"."`
+		WASI       bool   `help:"Use wasi-sdk ephemeral container to build WASM directly" default:"true"`
+		Output     string `short:"o" help:"Path or directory for output WASM file (defaults to project directory)" default:""`
+	} `cmd:"build-wasm" help:"Build WebAssembly artifact using wasi-sdk."`
 }
 
 func run() {
@@ -60,6 +67,17 @@ func main() {
 	case "build":
 		fmt.Printf("Building artifacts... %s\n", cli.Build.ProjectDir)
 		// Invoke Builder Only
-
+	case "build-wasm":
+		fmt.Printf("Building WASM artifact for project %s (mode: wasi)...\n", cli.BuildWasm.ProjectDir)
+		outputPath, err := builder.BuildWasm(sigCtx, builder.WasmBuildOptions{
+			ProjectDir: cli.BuildWasm.ProjectDir,
+			Mode:       builder.WasmModeWASI,
+			OutputPath: cli.BuildWasm.Output,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error building WASM: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("WASM artifact successfully built: %s\n", outputPath)
 	}
 }

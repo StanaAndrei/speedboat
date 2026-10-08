@@ -16,6 +16,11 @@ type ProjectConfig struct { // specification in project.yaml
 	Generator    ScriptConfig       `yaml:"generator" json:"generator"`
 	Reducer      ScriptConfig       `yaml:"reducer" json:"reducer"`
 	Verification VerificationConfig `yaml:"verification" json:"verification"`
+	Wasm         WasmConfig         `yaml:"wasm,omitempty" json:"wasm,omitempty"`
+}
+
+type WasmConfig struct {
+	Source string `yaml:"source,omitempty" json:"source,omitempty"`
 }
 
 type ContainerConfig struct { // container build & runtime settings

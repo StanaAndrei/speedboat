@@ -3,3 +3,4 @@ build/*
 
 examples/master.db
 *.db
+*.wasm
