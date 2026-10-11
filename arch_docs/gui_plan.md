@@ -156,3 +156,9 @@ While Speedboat can offer an optional "instant try" web page using in-browser WA
 4. **Phase 4: Heavy Mode Auto-Detection & Windows WSL2 Wizard**
    * Add runtime environment probing (check for Docker, Podman, WSL2).
    * Implement the optional one-click Alpine WSL2 provisioning wizard for advanced Windows tasks.
+
+
+# On Linux / WSL:
+    sudo apt install gcc-mingw-w64
+    wails build -platform windows/amd64
+
