@@ -4,21 +4,15 @@ services:
     container_name: speedboat-nats
     restart: unless-stopped
     command:
-      - "-js"                      # Enable JetStream for WorkQueue persistence
-      - "-sd"
-      - "/data"                    # JetStream storage directory
-      - "-m"
-      - "8222"                     # Enable monitoring dashboard
+      - "-c"
+      - "/etc/nats/nats.conf"
     ports:
       - "4222:4222"                # Native TCP client port
       - "8222:8222"                # HTTP management / monitoring
       - "8080:8080"                # WebSocket port for nats.ws browser clients
     volumes:
       - nats_data:/data
-    environment:
-      - NATS_SERVER_NAME=speedboat-master
-      - NATS_WEBSOCKET_PORT=8080
-      - NATS_WEBSOCKET_NO_TLS=true # Set to false and mount certs in production
+      - ./nats.conf:/etc/nats/nats.conf:ro
 
   registry:
     image: registry:2

@@ -20,6 +20,9 @@ type CLI struct {
 		NoBuild    bool   `help:"Skip image building step" default:"false"`
 		DB         string `help:"Database file path (SQLite) or connection string (PostgreSQL/MySQL)" default:"speedboat.db" env:"DB_PATH"`
 		SendDup    bool   `name:"send-dup" help:"Allow orchestrator to send redundant tasks to the same agent IP" default:"false"`
+		WasmPath   string `name:"wasm" help:"Path to compiled .wasm file to serve to browser volunteers" default:""`
+		WebPort    int    `name:"web-port" help:"HTTP port to host the volunteer web dashboard" default:"3000"`
+		NatsWsURL  string `name:"nats-ws" help:"NATS WebSocket endpoint for browser workers" default:""`
 	} `cmd:"" help:"Build image, load tasks, and start orchestrator."`
 
 	Build struct {
@@ -59,6 +62,9 @@ func main() {
 			cli.Run.DB,
 			cli.Run.SendDup,
 		)
+		orch.WasmPath = cli.Run.WasmPath
+		orch.WebPort = cli.Run.WebPort
+		orch.NatsWsURL = cli.Run.NatsWsURL
 		if err := orch.Run(sigCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "Master orchestrator error: %v\n", err)
 			os.Exit(1)

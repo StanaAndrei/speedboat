@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speedboat - Volunteer Computing</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #121826;
+      --border: #1f293d;
+      --text: #f0f4fc;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.2);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --terminal-bg: #0b0f19;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand svg {
+      width: 32px;
+      height: 32px;
+      fill: var(--accent);
+    }
+
+    .brand h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .dot.connecting { background: var(--warning); animation: pulse 1.5s infinite; }
+    .dot.idle { background: var(--success); }
+    .dot.computing { background: var(--accent); animation: pulse 1s infinite; }
+    .dot.paused { background: var(--muted); }
+    .dot.completed { background: var(--success); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .stat-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .stat-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.2rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-radius: 0.5rem;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--text);
+    }
+    .btn-outline:hover {
+      background: var(--card-bg);
+    }
+
+    .terminal-container {
+      background: var(--terminal-bg);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .terminal-header {
+      background: #0f1422;
+      padding: 0.6rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .terminal-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #2a3449;
+    }
+
+    .terminal-title {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .terminal-body {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      padding: 1rem;
+      height: 380px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-line {
+      display: block;
+      margin-bottom: 0.2rem;
+    }
+
+    .log-time { color: #64748b; margin-right: 0.5rem; }
+    .log-info { color: #38bdf8; }
+    .log-success { color: #4ade80; }
+    .log-warn { color: #facc15; }
+    .log-err { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2L2 22h20L12 2zm0 3.8L18.5 19H5.5L12 5.8zM11 11v4h2v-4h-2zm0 6v2h2v-2h-2z"/>
+        </svg>
+        <div>
+          <h1>Speedboat Grid</h1>
+          <p style="font-size: 0.85rem; color: var(--muted);">Zero-Install Volunteer Worker</p>
+        </div>
+      </div>
+      <div class="status-badge" id="status-badge">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">Initializing...</span>
+      </div>
+    </header>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-title">Project</div>
+        <div class="stat-value" id="val-project" style="font-size: 1.3rem;">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Tasks Completed</div>
+        <div class="stat-value" id="val-tasks">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Total Compute Time</div>
+        <div class="stat-value" id="val-time">0 ms</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Worker ID</div>
+        <div class="stat-value" id="val-worker" style="font-size: 1.1rem; font-family: monospace;">-</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-primary" id="btn-toggle">Pause Compute</button>
+      <label style="font-size: 0.85rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+        <input type="checkbox" id="chk-autoscroll" checked> Auto-scroll Terminal
+      </label>
+    </div>
+
+    <div class="terminal-container">
+      <div class="terminal-header">
+        <div class="terminal-dots">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="terminal-title">volunteer-console</div>
+        <button class="btn btn-outline" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" id="btn-clear">Clear</button>
+      </div>
+      <div class="terminal-body" id="terminal"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    let isPaused = false;
+    let tasksCompleted = 0;
+    let totalComputeMs = 0;
+    let worker = null;
+
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const valProject = document.getElementById('val-project');
+    const valTasks = document.getElementById('val-tasks');
+    const valTime = document.getElementById('val-time');
+    const valWorker = document.getElementById('val-worker');
+    const btnToggle = document.getElementById('btn-toggle');
+    const btnClear = document.getElementById('btn-clear');
+    const chkAutoScroll = document.getElementById('chk-autoscroll');
+    const terminal = document.getElementById('terminal');
+
+    function log(message, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = 'log-line';
+      div.innerHTML = `<span class="log-time">[${time}]</span><span class="log-${type}">${escapeHtml(message)}</span>`;
+      terminal.appendChild(div);
+      if (chkAutoScroll.checked) {
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function setStatus(state, text) {
+      statusDot.className = 'dot ' + state;
+      statusText.textContent = text;
+    }
+
+    function formatTime(ms) {
+      if (ms < 1000) return `${ms} ms`;
+      return `${(ms / 1000).toFixed(2)} s`;
+    }
+
+    async function init() {
+      // 1. Resolve configuration from query params or /info
+      const params = new URLSearchParams(window.location.search);
+      let projectId = params.get('project');
+      let natsWs = params.get('nats');
+
+      if (!projectId || !natsWs) {
+        try {
+          const resp = await fetch('/info');
+          if (resp.ok) {
+            const data = await resp.json();
+            if (!projectId && data.project) projectId = data.project;
+            if (!natsWs && data.nats_ws_url) natsWs = data.nats_ws_url;
+          }
+        } catch (e) {
+          // fallback
+        }
+      }
+
+      if (!projectId) {
+        projectId = 'default-project';
+      }
+      if (!natsWs) {
+        // Fallback default: same host with port 8080
+        natsWs = `ws://${window.location.hostname || 'localhost'}:8080`;
+      }
+
+      valProject.textContent = projectId;
+
+      // 2. Generate random worker ID
+      const workerId = 'web-' + Math.random().toString(36).substring(2, 10);
+      valWorker.textContent = workerId;
+
+      log(`🚀 Initializing Speedboat Browser Worker for project '${projectId}'`, 'info');
+      log(`📡 Connecting to NATS WebSocket at: ${natsWs}`, 'info');
+      setStatus('connecting', 'Connecting...');
+
+      // 3. Start Web Worker
+      worker = new Worker('/worker.js', { type: 'module' });
+
+      worker.onmessage = (e) => {
+        const { type, data } = e.data;
+        if (type === 'log') {
+          log(data.msg, data.level || 'info');
+        } else if (type === 'status') {
+          setStatus(data.state, data.text);
+        } else if (type === 'task_completed') {
+          tasksCompleted++;
+          totalComputeMs += data.durationMs;
+          valTasks.textContent = tasksCompleted;
+          valTime.textContent = formatTime(totalComputeMs);
+        }
+      };
+
+      worker.onerror = (err) => {
+        log(`Worker fatal error: ${err.message}`, 'err');
+        setStatus('paused', 'Error');
+      };
+
+      // Send initial config to worker
+      worker.postMessage({
+        action: 'init',
+        config: {
+          projectId,
+          natsWs,
+          workerId,
+          wasmUrl: '/payload.wasm'
+        }
+      });
+    }
+
+    btnToggle.addEventListener('click', () => {
+      isPaused = !isPaused;
+      if (isPaused) {
+        btnToggle.textContent = 'Resume Compute';
+        btnToggle.className = 'btn btn-outline';
+        setStatus('paused', 'Paused');
+        log('⏸️ Compute paused by volunteer', 'warn');
+        worker?.postMessage({ action: 'pause' });
+      } else {
+        btnToggle.textContent = 'Pause Compute';
+        btnToggle.className = 'btn btn-primary';
+        setStatus('idle', 'Resuming...');
+        log('▶️ Compute resumed', 'info');
+        worker?.postMessage({ action: 'resume' });
+      }
+    });
+
+    btnClear.addEventListener('click', () => {
+      terminal.innerHTML = '';
+    });
+
+    init();
+  </script>
+</body>
+</html>

@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
+	"net"
+	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,6 +16,7 @@ import (
 	"time"
 
 	"speedboat/internal/builder"
+	"speedboat/internal/orchestrator/web"
 	"speedboat/internal/protocol"
 	"speedboat/internal/runtime"
 	"speedboat/internal/store"
@@ -45,6 +49,29 @@ type Orchestrator struct {
 	blacklistMu    sync.RWMutex
 	blacklistedIPs map[string]bool
 	Engine         runtime.Engine
+	WasmPath       string
+	WebPort        int
+	NatsWsURL      string
+	httpServer     *http.Server
+}
+
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err == nil {
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+				if ipNet.IP.To4() != nil {
+					return ipNet.IP.String()
+				}
+			}
+		}
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+				return ipNet.IP.String()
+			}
+		}
+	}
+	return "127.0.0.1"
 }
 
 func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild bool, dbPath string, sendDup ...bool) *Orchestrator {
@@ -68,6 +95,7 @@ func NewOrchestrator(projectDir string, natsURL string, registry string, noBuild
 		Timeout:        0, // unlimited by default
 		DBPath:         db,
 		SendDup:        isSendDup,
+		WebPort:        3000,
 		blacklistedIPs: make(map[string]bool),
 	}
 }
@@ -276,6 +304,57 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			_ = infoSub.Unsubscribe()
 		}
 	}()
+
+	// Start browser volunteer web server if --wasm payload is configured
+	if o.WasmPath != "" {
+		absWasmPath := o.WasmPath
+		if !filepath.IsAbs(absWasmPath) {
+			if _, err := os.Stat(absWasmPath); err == nil {
+				absWasmPath, _ = filepath.Abs(absWasmPath)
+			} else {
+				absWasmPath = filepath.Join(o.ProjectDir, absWasmPath)
+			}
+		}
+		if fi, err := os.Stat(absWasmPath); err != nil || fi.IsDir() {
+			return fmt.Errorf("wasm payload not found at %s: %w", absWasmPath, err)
+		}
+
+		localIP := getLocalIP()
+		natsWsURL := o.NatsWsURL
+		if natsWsURL == "" {
+			natsWsURL = fmt.Sprintf("ws://%s:8080", localIP)
+		}
+
+		webPort := o.WebPort
+		if webPort <= 0 {
+			webPort = 3000
+		}
+
+		webHandler := web.Handler(cfg.Name, natsWsURL, absWasmPath)
+		server := &http.Server{
+			Addr:    fmt.Sprintf(":%d", webPort),
+			Handler: webHandler,
+		}
+		o.httpServer = server
+
+		go func() {
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				fmt.Printf("⚠️  [Web] Volunteer server error: %v\n", err)
+			}
+		}()
+
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = server.Shutdown(shutdownCtx)
+		}()
+
+		volunteerURL := fmt.Sprintf("http://%s:%d/?project=%s&nats=%s", localIP, webPort, cfg.Name, natsWsURL)
+		fmt.Println("--------------------------------------------------------------------------------")
+		fmt.Printf("🌐 [WASM Web Worker] Volunteer page available at:\n")
+		fmt.Printf("👉 %s\n", volunteerURL)
+		fmt.Println("--------------------------------------------------------------------------------")
+	}
 
 	// 7. Load persisted state and compute set difference
 	persistedVerified, err := o.Store.GetVerifiedResults(cfg.Name)
