@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-//go:embed index.html worker.js
+//go:embed index.html styles.css worker.js
 var Content embed.FS
 
 type InfoResponse struct {
@@ -33,6 +33,17 @@ func Handler(projectID, natsWsURL, wasmFilePath string) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(data)
+	})
+
+	// Serve styles.css
+	mux.HandleFunc("/styles.css", func(w http.ResponseWriter, r *http.Request) {
+		data, err := Content.ReadFile("styles.css")
+		if err != nil {
+			http.Error(w, "internal server error: missing styles.css", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		_, _ = w.Write(data)
 	})
 

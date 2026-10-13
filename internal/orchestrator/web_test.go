@@ -38,6 +38,22 @@ func TestWebHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("GET /styles.css serves stylesheet", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/styles.css", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Header().Get("Content-Type"), "text/css") {
+			t.Errorf("expected text/css, got %s", rec.Header().Get("Content-Type"))
+		}
+		if !strings.Contains(rec.Body.String(), "--terminal-bg") {
+			t.Errorf("expected body to contain '--terminal-bg'")
+		}
+	})
+
 	t.Run("GET /worker.js serves worker script", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/worker.js", nil)
 		rec := httptest.NewRecorder()
