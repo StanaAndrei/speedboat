@@ -231,48 +231,7 @@ func TestDispatcherSendDupSelection(t *testing.T) {
 	workerKey := "192.168.1.10-w1"
 
 	selectTask := func(sendDup bool, tasksList []*managedTask, verifiedResults map[string]protocol.TaskResult) *managedTask {
-		isEligible := func(mt *managedTask) bool {
-			if _, verified := verifiedResults[mt.taskID]; verified {
-				return false
-			}
-
-			if sendDup {
-				activeCount := 0
-				for key, ts := range mt.assignedIPs {
-					if key != workerKey && time.Since(ts) < 60*time.Second {
-						activeCount++
-					}
-				}
-				return mt.completedCount+activeCount < redundancy
-			} else {
-				if mt.completedIPs[workerIP] {
-					return false
-				}
-				activeOther := 0
-				for otherIP, ts := range mt.assignedIPs {
-					if otherIP != workerIP && time.Since(ts) < 60*time.Second && !mt.completedIPs[otherIP] {
-						activeOther++
-					}
-				}
-				return len(mt.completedIPs)+activeOther < redundancy
-			}
-		}
-
-		for _, mt := range tasksList {
-			if !mt.completedIPs[workerIP] && isEligible(mt) {
-				return mt
-			}
-		}
-
-		if sendDup {
-			for _, mt := range tasksList {
-				if isEligible(mt) {
-					return mt
-				}
-			}
-		}
-
-		return nil
+		return selectTaskForWorker(tasksList, verifiedResults, workerIP, workerKey, sendDup, redundancy)
 	}
 
 	mt := &managedTask{
