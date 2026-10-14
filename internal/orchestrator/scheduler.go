@@ -42,7 +42,12 @@ func selectTaskForWorker(
 				return false
 			}
 			activeOther := 0
-			for otherIP, t := range mt.assignedIPs {
+			for otherKey, t := range mt.assignedIPs {
+				otherIP := getWorkerIP("", otherKey)
+				if otherKey != workerKey && otherIP == workerIP && time.Since(t) < 60*time.Second {
+					// Another worker thread with the same IP is currently computing this task
+					return false
+				}
 				if otherIP != workerIP && time.Since(t) < 60*time.Second && !mt.completedIPs[otherIP] {
 					activeOther++
 				}

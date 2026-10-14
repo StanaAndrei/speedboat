@@ -28,7 +28,11 @@ func (o *Orchestrator) blacklistIP(ip, reason string, tasksMap ...map[string]*ma
 
 	if len(tasksMap) > 0 && tasksMap[0] != nil {
 		for _, mt := range tasksMap[0] {
-			delete(mt.assignedIPs, ip)
+			for k := range mt.assignedIPs {
+				if k == ip || getWorkerIP("", k) == ip {
+					delete(mt.assignedIPs, k)
+				}
+			}
 		}
 	}
 

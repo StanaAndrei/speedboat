@@ -1,13 +1,17 @@
-.PHONY: build build-master-cli build-agent-cli clean compose-up compose-down test test-cluster test-cluster-2-agents test-cluster-3-agents test-master-only test-cluster-manual test-prime-cnt-cluster test-clean boot-agent add-agent add-agents list-agents stop-agents
+.PHONY: build build-master-cli build-agent-cli build-gui clean compose-up compose-down test test-cluster test-cluster-2-agents test-cluster-3-agents test-master-only test-cluster-manual test-prime-cnt-cluster test-clean boot-agent add-agent add-agents list-agents stop-agents
 
-build: build-master-cli build-agent-cli
-
+build: build-master-cli build-agent-cli build-gui
 
 build-master-cli:
 	CGO_ENABLED=0 go build -o build/speedboat-master ./cmd/master
 
 build-agent-cli:
 	CGO_ENABLED=0 go build -o build/speedboat-agent ./cmd/agent
+
+build-gui:
+	cd gui && wails build -tags webkit2_41 -o speedboat-gui
+	@mkdir -p build
+	@cp gui/build/bin/speedboat-gui build/speedboat-gui
 
 compose-up:
 	cd ./examples && docker compose up -d

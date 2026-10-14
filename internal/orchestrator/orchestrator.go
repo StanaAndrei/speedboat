@@ -262,9 +262,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			return
 		}
 
-		workerKey := workerIP
-		if o.SendDup && req.WorkerID != "" {
-			workerKey = req.WorkerID
+		workerKey := req.WorkerID
+		if workerKey == "" {
+			workerKey = workerIP
 		}
 
 		taskMu.Lock()

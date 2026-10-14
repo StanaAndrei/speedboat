@@ -351,9 +351,9 @@ func (o *Orchestrator) collectAndVerifyResults(
 		}
 
 		workerIP := getWorkerIP(res.IP, res.WorkerID)
-		workerKey := workerIP
-		if o.SendDup && res.WorkerID != "" {
-			workerKey = res.WorkerID
+		workerKey := res.WorkerID
+		if workerKey == "" {
+			workerKey = workerIP
 		}
 
 		// Discard result if worker is blacklisted

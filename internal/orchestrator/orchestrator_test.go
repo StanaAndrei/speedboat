@@ -789,6 +789,50 @@ func TestMasterLocalExecutionFallbackAndBlacklist(t *testing.T) {
 	}
 }
 
+func TestMultiThreadSameIPNoDuplicateTask(t *testing.T) {
+	redundancy := 2
+	workerIP := "192.168.1.138"
+	thread1 := "192.168.1.138-rand-w1"
+	thread2 := "192.168.1.138-rand-w2"
+
+	mt1 := &managedTask{
+		taskID:       "task-0001",
+		rawBytes:     []byte(`{"task_id":"task-0001"}`),
+		assignedIPs:  make(map[string]time.Time),
+		completedIPs: make(map[string]bool),
+	}
+	mt2 := &managedTask{
+		taskID:       "task-0002",
+		rawBytes:     []byte(`{"task_id":"task-0002"}`),
+		assignedIPs:  make(map[string]time.Time),
+		completedIPs: make(map[string]bool),
+	}
+	tasksList := []*managedTask{mt1, mt2}
+	verifiedResults := make(map[string]protocol.TaskResult)
+
+	// Thread 1 asks for a task -> gets task-0001
+	sel1 := selectTaskForWorker(tasksList, verifiedResults, workerIP, thread1, false, redundancy)
+	if sel1 == nil || sel1.taskID != "task-0001" {
+		t.Fatalf("expected thread 1 to get task-0001, got %v", sel1)
+	}
+	sel1.assignedIPs[thread1] = time.Now()
+
+	// Thread 2 (same IP) asks for a task -> must NOT get task-0001! Must get task-0002!
+	sel2 := selectTaskForWorker(tasksList, verifiedResults, workerIP, thread2, false, redundancy)
+	if sel2 == nil || sel2.taskID != "task-0002" {
+		t.Fatalf("expected thread 2 to get task-0002, got %v", sel2)
+	}
+	sel2.assignedIPs[thread2] = time.Now()
+
+	// Thread 3 asks for a task -> no more tasks left for this IP (both in flight by this IP)
+	thread3 := "192.168.1.138-rand-w3"
+	sel3 := selectTaskForWorker(tasksList, verifiedResults, workerIP, thread3, false, redundancy)
+	if sel3 != nil {
+		t.Fatalf("expected nil when all tasks are currently in flight by same IP, got %s", sel3.taskID)
+	}
+}
+
+
 
 
 

@@ -8,11 +8,11 @@ This document outlines the architectural plan for the **Speedboat Desktop Agent*
 
 * **Target Audience:** Casual, non-technical volunteers who want to contribute idle computer power without dealing with Docker, terminal commands, virtual machines, or complex installation steps.
 * **Core Philosophy:** **Zero-friction adoption**. The volunteer downloads a single, lightweight binary (~15–25 MB), launches it, and it immediately begins crunching scientific tasks.
-* **Unified Codebase:** A single, cross-platform client codebase (using **Wails + React**) that compiles to native desktop binaries for Windows (`.exe`), macOS (`.app` / `.dmg`), and Linux (`.AppImage` / `.deb`), with OS-specific runtime execution strategies implemented behind Go build tags.
+* **Unified Codebase:** A single, cross-platform client codebase (using **Wails + Preact**) that compiles to native desktop binaries for Windows (`.exe`), macOS (`.app` / `.dmg`), and Linux (`.AppImage` / `.deb`), with OS-specific runtime execution strategies implemented behind Go build tags.
 
 ---
 
-## 2. Frontend & Application Shell: Wails + React
+## 2. Frontend & Application Shell: Wails + Preact
 
 ### Why Wails (Go + Native Webview)?
 1. **Shared Go Stack:** Speedboat's agent core (`internal/agent`, `internal/protocol`, `internal/runtime`, NATS client) is written in Go. With Wails, both the UI shell and the backend execution engine share the same Go process, memory space, and types.
@@ -27,7 +27,7 @@ This document outlines the architectural plan for the **Speedboat Desktop Agent*
    * Auto-start on system boot.
    * Low baseline idle memory footprint (< 50 MB RAM).
 
-### UI Capabilities (React Dashboard)
+### UI Capabilities (Preact Dashboard)
 * **Real-time Metrics:** Active task name, computation progress percentage, CPU utilization, and completed task counters.
 * **Volunteer Controls & Throttles:**
   * CPU slider: Select max allowed CPU threads (e.g., 2, 4, 8 threads).
@@ -150,9 +150,9 @@ While Speedboat can offer an optional "instant try" web page using in-browser WA
    * Verify end-to-end task execution using WASI SDK compiled artifacts.
 2. **Phase 2: Headless Cross-Platform Agent Verification**
    * Ensure `cmd/agent` compiles and runs cleanly across Windows, macOS, and Linux with the wazero engine.
-3. **Phase 3: Wails Desktop Shell (React Frontend)**
+3. **Phase 3: Wails Desktop Shell (Preact Frontend)**
    * Initialize Wails project structure wrapping the existing Go agent.
-   * Build the React dashboard: live status, task throughput, CPU throttling slider, and system tray integration.
+   * Build the Preact dashboard: live status, task throughput, CPU throttling slider, and system tray integration.
 4. **Phase 4: Heavy Mode Auto-Detection & Windows WSL2 Wizard**
    * Add runtime environment probing (check for Docker, Podman, WSL2).
    * Implement the optional one-click Alpine WSL2 provisioning wizard for advanced Windows tasks.
