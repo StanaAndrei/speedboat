@@ -317,15 +317,14 @@ func (p *WorkerPool) workerLoop(workerNum int) {
 			if p.computeMode == "apptainer" {
 				image := task.Image
 				if image == "" {
-					image = "speedboat/worker:latest"
+					image = fmt.Sprintf("%s:latest", p.projectID)
 				}
 				image = p.resolveImageRegistry(image)
 
 				if pullErr := p.engine.PullImage(p.ctx, image); pullErr != nil {
-					execErr = fmt.Errorf("container pull failed: %w", pullErr)
-				} else {
-					stdoutBytes, execErr = p.engine.Execute(p.ctx, image, resp.Task)
+					p.log("warn", fmt.Sprintf("⚠️ [%s] Pull warning for %s: %v", workerID, image, pullErr))
 				}
+				stdoutBytes, execErr = p.engine.Execute(p.ctx, image, resp.Task)
 			} else {
 				// Wazero WASM execution
 				var stdout, stderr bytes.Buffer
@@ -399,6 +398,9 @@ func (p *WorkerPool) workerLoop(workerNum int) {
 				p.tasksCompleted.Add(1)
 				p.totalComputeMs.Add(durationMs)
 				p.emitMetrics()
+			} else {
+				// Prevent tight failure loop from locking GUI event bus
+				time.Sleep(1 * time.Second)
 			}
 			p.setStatus("idle", fmt.Sprintf("Running with %d worker thread(s)", p.targetCap))
 		}

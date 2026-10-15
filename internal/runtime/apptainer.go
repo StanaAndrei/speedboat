@@ -111,7 +111,7 @@ func (a *ApptainerEngine) pullToPath(ctx context.Context, targetPath string, sou
 	}
 	args = append(args, tmpPath, sourceURI)
 
-	cmd := exec.CommandContext(ctx, a.binaryPath, args...)
+	cmd := a.buildCmd(ctx, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -124,6 +124,23 @@ func (a *ApptainerEngine) pullToPath(ctx context.Context, targetPath string, sou
 	}
 
 	return "", nil
+}
+
+func (a *ApptainerEngine) buildCmd(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, a.binaryPath, args...)
+	baseDir := filepath.Dir(a.binaryPath)
+	candidates := []string{
+		filepath.Join(baseDir, "..", "etc", "apptainer", "apptainer.conf"),
+		filepath.Join(baseDir, "..", "usr", "etc", "apptainer", "apptainer.conf"),
+		filepath.Join(baseDir, "..", "..", "etc", "apptainer", "apptainer.conf"),
+	}
+	for _, c := range candidates {
+		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+			cmd.Env = append(os.Environ(), fmt.Sprintf("APPTAINER_CONFIG_FILE=%s", c))
+			break
+		}
+	}
+	return cmd
 }
 
 func (a *ApptainerEngine) PullImage(ctx context.Context, image string) error {
@@ -238,7 +255,7 @@ func (a *ApptainerEngine) Execute(ctx context.Context, image string, input []byt
 	}
 	args = append(args, target)
 
-	cmd := exec.CommandContext(ctx, a.binaryPath, args...)
+	cmd := a.buildCmd(ctx, args...)
 	cmd.Stdin = bytes.NewReader(input)
 
 	var stdout, stderr bytes.Buffer

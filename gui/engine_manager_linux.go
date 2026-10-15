@@ -31,10 +31,41 @@ func getSpeedboatInstallDir() string {
 	return filepath.Join(home, ".local", "share", "speedboat")
 }
 
+func ensureRelocatableSymlinks(destDir string) {
+	usrDir := filepath.Join(destDir, "usr")
+	if fi, err := os.Stat(usrDir); err == nil && fi.IsDir() {
+		// Apptainer expects configuration at PREFIX/etc (destDir/usr/etc)
+		usrEtc := filepath.Join(usrDir, "etc")
+		if _, err := os.Lstat(usrEtc); err != nil {
+			_ = os.Symlink("../etc", usrEtc)
+		}
+		// Apptainer expects session directory at PREFIX/var (destDir/usr/var)
+		usrVar := filepath.Join(usrDir, "var")
+		if _, err := os.Lstat(usrVar); err != nil {
+			_ = os.Symlink("../var", usrVar)
+		}
+	}
+
+	// Ensure destDir/bin/apptainer is symlinked to ../usr/bin/apptainer
+	realBin := filepath.Join(destDir, "usr", "bin", "apptainer")
+	if fi, err := os.Stat(realBin); err == nil && (fi.Mode()&0111 != 0) {
+		binDir := filepath.Join(destDir, "bin")
+		_ = os.MkdirAll(binDir, 0755)
+		linkBin := filepath.Join(binDir, "apptainer")
+		if _, err := os.Lstat(linkBin); err != nil {
+			_ = os.Symlink(realBin, linkBin)
+		}
+		_ = os.Chmod(realBin, 0755)
+	}
+}
+
 func findApptainerBinary() (string, string) {
+	destDir := getSpeedboatInstallDir()
+	ensureRelocatableSymlinks(destDir)
+
 	candidates := []string{
-		filepath.Join(getSpeedboatInstallDir(), "bin", "apptainer"),
-		filepath.Join(getSpeedboatInstallDir(), "usr", "bin", "apptainer"),
+		filepath.Join(destDir, "bin", "apptainer"),
+		filepath.Join(destDir, "usr", "bin", "apptainer"),
 	}
 
 	for _, p := range candidates {
@@ -43,7 +74,6 @@ func findApptainerBinary() (string, string) {
 			if err == nil {
 				return p, strings.TrimSpace(string(out))
 			}
-			return p, "unknown"
 		}
 	}
 
@@ -52,7 +82,6 @@ func findApptainerBinary() (string, string) {
 		if err == nil {
 			return p, strings.TrimSpace(string(out))
 		}
-		return p, "unknown"
 	}
 
 	if p, err := exec.LookPath("singularity"); err == nil {
@@ -60,7 +89,6 @@ func findApptainerBinary() (string, string) {
 		if err == nil {
 			return p, strings.TrimSpace(string(out))
 		}
-		return p, "unknown"
 	}
 
 	return "", ""
@@ -186,13 +214,11 @@ func (m *linuxHeavyEngineManager) Install(ctx context.Context, onProgress Progre
 		if err != nil {
 			return fmt.Errorf("neither dpkg-deb nor ar found on host to unpack .deb package")
 		}
-		// Extract data.tar.* from .deb
 		cmd := exec.CommandContext(ctx, arCmd, "x", tmpDeb)
 		cmd.Dir = os.TempDir()
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("ar extraction failed: %w", err)
 		}
-		// Look for data.tar*
 		dataTar := filepath.Join(os.TempDir(), "data.tar.gz")
 		if _, err := os.Stat(dataTar); os.IsNotExist(err) {
 			dataTar = filepath.Join(os.TempDir(), "data.tar.xz")
@@ -204,20 +230,18 @@ func (m *linuxHeavyEngineManager) Install(ctx context.Context, onProgress Progre
 		}
 	}
 
-	// Create symlink ~/.local/share/speedboat/bin/apptainer -> ../usr/bin/apptainer
-	realBin := filepath.Join(destDir, "usr", "bin", "apptainer")
-	linkBin := filepath.Join(destDir, "bin", "apptainer")
-	_ = os.Remove(linkBin)
-	_ = os.Symlink(realBin, linkBin)
-	_ = os.Chmod(realBin, 0755)
+	// Ensure relocatable symlinks (usr/etc -> ../etc, usr/var -> ../var, bin/apptainer -> ../usr/bin/apptainer)
+	ensureRelocatableSymlinks(destDir)
 
 	if onProgress != nil {
 		onProgress(95, "Verifying Apptainer installation...")
 	}
 
+	realBin := filepath.Join(destDir, "usr", "bin", "apptainer")
+	linkBin := filepath.Join(destDir, "bin", "apptainer")
+
 	outVer, err := exec.CommandContext(ctx, linkBin, "version").Output()
 	if err != nil {
-		// Try realBin directly
 		outVer, err = exec.CommandContext(ctx, realBin, "version").Output()
 		if err != nil {
 			return fmt.Errorf("installed binary failed verification: %w", err)

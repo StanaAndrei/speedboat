@@ -21,6 +21,8 @@ export function App() {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showPlatformModal, setShowPlatformModal] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
+  const [installSuccess, setInstallSuccess] = useState(false);
+  const [installError, setInstallError] = useState(null);
   const [installProgress, setInstallProgress] = useState({ percent: 0, message: '' });
 
   const terminalRef = useRef(null);
@@ -159,16 +161,24 @@ export function App() {
     if (!window.go || !window.go.main || !window.go.main.App) return;
 
     setIsInstalling(true);
+    setInstallError(null);
+    setInstallSuccess(false);
     setInstallProgress({ percent: 5, message: 'Starting installation...' });
 
     try {
       await window.go.main.App.InstallHeavyEngine();
       await refreshCaps();
-      setComputeMode('apptainer');
-      setShowInstallModal(false);
+      setInstallSuccess(true);
+      setInstallProgress({ percent: 100, message: '✓ Apptainer installed and verified successfully!' });
+      setTimeout(() => {
+        setComputeMode('apptainer');
+        setShowInstallModal(false);
+        setIsInstalling(false);
+        setInstallSuccess(false);
+      }, 1200);
     } catch (err) {
+      setInstallError(String(err));
       setInstallProgress({ percent: 100, message: `Installation failed: ${err}` });
-    } finally {
       setIsInstalling(false);
     }
   };
@@ -471,30 +481,48 @@ export function App() {
 
       {/* 1-Click Install Modal */}
       {showInstallModal && (
-        <div class="modal-backdrop">
-          <div class="modal-card">
-            <div class="modal-header">
+        <div class="modal-backdrop" onClick={() => { if (!isInstalling) setShowInstallModal(false); }}>
+          <div class="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
               <h3>🚀 Install Apptainer Container Engine</h3>
+              {!isInstalling && (
+                <button
+                  type="button"
+                  onClick={() => setShowInstallModal(false)}
+                  style="background:none; border:none; color:var(--muted); font-size:1.25rem; cursor:pointer; padding: 0.2rem 0.5rem;"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <div class="modal-body">
               <p style="margin-bottom: 0.75rem;">
-                Heavy Mode executes tasks directly inside isolated rootless container environments with full CPU throughput and GPU passthrough.
+                Heavy Mode executes tasks directly inside isolated rootless container environments with full CPU throughput and optional GPU passthrough.
               </p>
               <p style="margin-bottom: 0.75rem; color: #94a3b8; font-size: 0.85rem;">
-                This one-click install sets up Apptainer locally in your user folder (<code style="color: var(--accent);">~/.local/share/speedboat/bin</code>) without requiring root/sudo privileges or terminal commands.
+                This one-click install sets up Apptainer locally in your user folder (<code style="color: var(--accent);">~/.local/share/speedboat</code>) without requiring root/sudo privileges or terminal commands.
               </p>
 
-              {isInstalling && (
+              {(isInstalling || installSuccess) && (
                 <div class="progress-container">
                   <div class="progress-bar">
                     <div class="progress-fill" style={{ width: `${installProgress.percent}%` }}></div>
                   </div>
-                  <div class="progress-text">{installProgress.message}</div>
+                  <div class="progress-text" style={{ color: installSuccess ? 'var(--success)' : 'inherit' }}>
+                    {installProgress.message}
+                  </div>
+                </div>
+              )}
+
+              {installError && (
+                <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger); border-radius: 0.5rem; padding: 0.75rem; margin: 0.75rem 0; font-size: 0.85rem; color: #fca5a5;">
+                  <strong>Installation Error:</strong> {installError}
                 </div>
               )}
             </div>
             <div class="modal-actions">
               <button
+                type="button"
                 class="btn btn-outline"
                 disabled={isInstalling}
                 onClick={() => {
@@ -505,11 +533,12 @@ export function App() {
                 Use Lite Mode Instead
               </button>
               <button
+                type="button"
                 class="btn btn-primary"
-                disabled={isInstalling}
+                disabled={isInstalling || installSuccess}
                 onClick={handleRunInstall}
               >
-                {isInstalling ? 'Installing...' : 'Install Apptainer (One-Click)'}
+                {isInstalling ? 'Installing...' : installSuccess ? '✓ Installed' : 'Install Apptainer (One-Click)'}
               </button>
             </div>
           </div>
