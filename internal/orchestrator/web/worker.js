@@ -263,7 +263,7 @@ async function startWorker() {
             };
           }
 
-          postLog(`📤 [Worker ${workerId}] Task ${taskId} completed in ${durationMs}ms. Publishing result...`, "success");
+          postLog(`📤 [Worker ${workerId}] Task "${taskId}" completed in ${durationMs}ms. Publishing result...`, "success");
         }
 
         // Publish result to results.<project_id>

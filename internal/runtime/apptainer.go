@@ -14,13 +14,22 @@ import (
 type ApptainerEngine struct {
 	binaryPath string
 	cacheDir   string
+	GPUEnabled bool
 	mu         sync.Mutex
 }
 
 func NewApptainerEngine() *ApptainerEngine {
-	bin, err := exec.LookPath("apptainer")
-	if err != nil {
-		bin, _ = exec.LookPath("singularity")
+	return NewApptainerEngineCustom("")
+}
+
+func NewApptainerEngineCustom(customBin string) *ApptainerEngine {
+	bin := customBin
+	if bin == "" {
+		var err error
+		bin, err = exec.LookPath("apptainer")
+		if err != nil {
+			bin, _ = exec.LookPath("singularity")
+		}
 	}
 
 	cacheDir := os.Getenv("SPEEDBOAT_SIF_DIR")
@@ -37,6 +46,14 @@ func NewApptainerEngine() *ApptainerEngine {
 		binaryPath: bin,
 		cacheDir:   cacheDir,
 	}
+}
+
+func (a *ApptainerEngine) SetGPUEnabled(enabled bool) {
+	a.GPUEnabled = enabled
+}
+
+func (a *ApptainerEngine) GetBinaryPath() string {
+	return a.binaryPath
 }
 
 func (a *ApptainerEngine) Name() string {
@@ -165,6 +182,32 @@ func (a *ApptainerEngine) PullImage(ctx context.Context, image string) error {
 	return nil
 }
 
+func HasNvidiaGPU() bool {
+	for _, dev := range []string{"/dev/nvidia0", "/dev/nvidiactl"} {
+		if _, err := os.Stat(dev); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func HasAmdGPU() bool {
+	if _, err := os.Stat("/dev/kfd"); err == nil {
+		return true
+	}
+	return false
+}
+
+func DetectHostGPU() (bool, string) {
+	if HasNvidiaGPU() {
+		return true, "NVIDIA"
+	}
+	if HasAmdGPU() {
+		return true, "AMD"
+	}
+	return false, "None"
+}
+
 func (a *ApptainerEngine) Execute(ctx context.Context, image string, input []byte) ([]byte, error) {
 	if !a.IsAvailable() {
 		return nil, fmt.Errorf("apptainer binary not found")
@@ -185,7 +228,16 @@ func (a *ApptainerEngine) Execute(ctx context.Context, image string, input []byt
 	// run: execute the container image's default entrypoint
 	// --contain: isolate filesystem (/tmp, /var/tmp)
 	// --net --network=none: sandbox network isolation
-	args := []string{"-s", "run", "--contain", "--net", "--network=none", target}
+	args := []string{"-s", "run", "--contain", "--net", "--network=none"}
+	if a.GPUEnabled {
+		if HasNvidiaGPU() {
+			args = append(args, "--nv")
+		} else if HasAmdGPU() {
+			args = append(args, "--rocm")
+		}
+	}
+	args = append(args, target)
+
 	cmd := exec.CommandContext(ctx, a.binaryPath, args...)
 	cmd.Stdin = bytes.NewReader(input)
 

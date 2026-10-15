@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 
 export function App() {
   const [systemInfo, setSystemInfo] = useState({ num_cpu: 4, default_threads: 2, worker_id: 'loading...' });
+  const [engineCaps, setEngineCaps] = useState(null);
+  const [computeMode, setComputeMode] = useState('wasm'); // 'wasm' | 'apptainer'
+  const [enableGPU, setEnableGPU] = useState(false);
+
   const [projectUrl, setProjectUrl] = useState('');
   const [preview, setPreview] = useState(null);
   const [isResolving, setIsResolving] = useState(false);
@@ -12,13 +16,41 @@ export function App() {
   const [metrics, setMetrics] = useState({ tasks_completed: 0, total_compute_ms: 0, active_threads: 0, average_latency_ms: 0 });
   const [logs, setLogs] = useState([]);
   const [autoScroll, setAutoScroll] = useState(true);
+
+  // Modal states
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const [showPlatformModal, setShowPlatformModal] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [installProgress, setInstallProgress] = useState({ percent: 0, message: '' });
+
   const terminalRef = useRef(null);
+
+  // Refresh engine capabilities
+  const refreshCaps = async () => {
+    if (window.go && window.go.main && window.go.main.App) {
+      try {
+        const caps = await window.go.main.App.GetEngineCapabilities();
+        setEngineCaps(caps);
+        if (caps.gpu_available) {
+          setEnableGPU(true);
+        }
+      } catch (e) {
+        console.error('Failed to get engine caps:', e);
+      }
+    }
+  };
 
   // Initialize System Info and Wails event listeners
   useEffect(() => {
     if (window.go && window.go.main && window.go.main.App) {
       window.go.main.App.GetSystemInfo().then((info) => {
         setSystemInfo(info);
+        if (info.engine_caps) {
+          setEngineCaps(info.engine_caps);
+          if (info.engine_caps.gpu_available) {
+            setEnableGPU(true);
+          }
+        }
         setConcurrency(info.default_threads || 2);
       });
     }
@@ -39,6 +71,10 @@ export function App() {
 
       window.runtime.EventsOn('metrics', (metricsData) => {
         setMetrics(metricsData);
+      });
+
+      window.runtime.EventsOn('install_progress', (progressData) => {
+        setInstallProgress(progressData);
       });
     }
 
@@ -100,6 +136,43 @@ export function App() {
     }
   };
 
+  const handleSelectHeavyMode = () => {
+    if (!engineCaps) {
+      setComputeMode('apptainer');
+      return;
+    }
+
+    if (!engineCaps.heavy_mode_supported) {
+      setShowPlatformModal(true);
+      return;
+    }
+
+    if (!engineCaps.is_installed) {
+      setShowInstallModal(true);
+      return;
+    }
+
+    setComputeMode('apptainer');
+  };
+
+  const handleRunInstall = async () => {
+    if (!window.go || !window.go.main || !window.go.main.App) return;
+
+    setIsInstalling(true);
+    setInstallProgress({ percent: 5, message: 'Starting installation...' });
+
+    try {
+      await window.go.main.App.InstallHeavyEngine();
+      await refreshCaps();
+      setComputeMode('apptainer');
+      setShowInstallModal(false);
+    } catch (err) {
+      setInstallProgress({ percent: 100, message: `Installation failed: ${err}` });
+    } finally {
+      setIsInstalling(false);
+    }
+  };
+
   const handleStart = async () => {
     if (!preview) return;
 
@@ -114,6 +187,8 @@ export function App() {
           nats_url: preview.nats_ws_url,
           payload_url: preview.payload_url,
           concurrency: parseInt(concurrency, 10),
+          compute_mode: computeMode,
+          enable_gpu: enableGPU,
         });
       } catch (err) {
         setStatus({ state: 'paused', text: 'Connection Error' });
@@ -163,7 +238,7 @@ export function App() {
           </svg>
           <div>
             <h1>Speedboat Desktop</h1>
-            <p style="font-size: 0.85rem; color: var(--muted);">Wazero High-Speed Volunteer Grid</p>
+            <p style="font-size: 0.85rem; color: var(--muted);">High-Speed Distributed Volunteer Grid</p>
           </div>
         </div>
 
@@ -225,7 +300,57 @@ export function App() {
             </div>
           )}
 
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+          {/* Compute Mode Selector */}
+          <div class="mode-selector">
+            <button
+              type="button"
+              class={`mode-btn ${computeMode === 'wasm' ? 'active' : ''}`}
+              onClick={() => setComputeMode('wasm')}
+            >
+              <span class="mode-icon">⚡</span>
+              <div class="mode-info">
+                <div class="mode-title">Lite Mode (Wazero WASM)</div>
+                <div class="mode-desc">Zero-install, instant in-memory sandboxed execution</div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class={`mode-btn ${computeMode === 'apptainer' ? 'active' : ''}`}
+              onClick={handleSelectHeavyMode}
+            >
+              <span class="mode-icon">🚀</span>
+              <div class="mode-info">
+                <div class="mode-title">Heavy Mode ({engineCaps?.engine_name || 'Apptainer'})</div>
+                <div class="mode-desc">
+                  Native container throughput
+                  {engineCaps?.gpu_available ? ` • ${engineCaps.gpu_vendor} GPU` : ''}
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* Engine status details for Heavy Mode */}
+          {computeMode === 'apptainer' && engineCaps && (
+            <div class="engine-status-row">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success);">✓</span>
+                <span style="color: #94a3b8;">{engineCaps.status_message}</span>
+              </div>
+              {engineCaps.gpu_available && (
+                <label class="gpu-toggle">
+                  <input
+                    type="checkbox"
+                    checked={enableGPU}
+                    onChange={(e) => setEnableGPU(e.target.checked)}
+                  />
+                  <span>Enable GPU Passthrough ({engineCaps.gpu_vendor})</span>
+                </label>
+              )}
+            </div>
+          )}
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
             <div class="slider-container">
               <span class="slider-label">CPU Cores:</span>
               <input
@@ -259,16 +384,20 @@ export function App() {
               </div>
             </div>
             <div class="stat-card">
+              <div class="stat-title">Runtime Engine</div>
+              <div class="stat-value" style="font-size: 1.1rem; color: #38bdf8;">
+                {computeMode === 'apptainer'
+                  ? `🚀 Apptainer ${enableGPU ? '(+GPU)' : ''}`
+                  : '⚡ Wazero WASM'}
+              </div>
+            </div>
+            <div class="stat-card">
               <div class="stat-title">Tasks Completed</div>
               <div class="stat-value">{metrics.tasks_completed}</div>
             </div>
             <div class="stat-card">
               <div class="stat-title">Compute Time</div>
               <div class="stat-value">{formatDuration(metrics.total_compute_ms)}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-title">Average Latency</div>
-              <div class="stat-value">{metrics.average_latency_ms} ms</div>
             </div>
           </div>
 
@@ -304,7 +433,9 @@ export function App() {
               <div class="terminal-dots">
                 <span></span><span></span><span></span>
               </div>
-              <div class="terminal-title">wazero-execution-log ({systemInfo.worker_id})</div>
+              <div class="terminal-title">
+                {computeMode === 'apptainer' ? 'apptainer-container-log' : 'wazero-wasm-log'} ({systemInfo.worker_id})
+              </div>
               <div style="display: flex; gap: 0.75rem; align-items: center;">
                 <label style="font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
                   <input
@@ -336,6 +467,84 @@ export function App() {
             </div>
           </div>
         </>
+      )}
+
+      {/* 1-Click Install Modal */}
+      {showInstallModal && (
+        <div class="modal-backdrop">
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>🚀 Install Apptainer Container Engine</h3>
+            </div>
+            <div class="modal-body">
+              <p style="margin-bottom: 0.75rem;">
+                Heavy Mode executes tasks directly inside isolated rootless container environments with full CPU throughput and GPU passthrough.
+              </p>
+              <p style="margin-bottom: 0.75rem; color: #94a3b8; font-size: 0.85rem;">
+                This one-click install sets up Apptainer locally in your user folder (<code style="color: var(--accent);">~/.local/share/speedboat/bin</code>) without requiring root/sudo privileges or terminal commands.
+              </p>
+
+              {isInstalling && (
+                <div class="progress-container">
+                  <div class="progress-bar">
+                    <div class="progress-fill" style={{ width: `${installProgress.percent}%` }}></div>
+                  </div>
+                  <div class="progress-text">{installProgress.message}</div>
+                </div>
+              )}
+            </div>
+            <div class="modal-actions">
+              <button
+                class="btn btn-outline"
+                disabled={isInstalling}
+                onClick={() => {
+                  setShowInstallModal(false);
+                  setComputeMode('wasm');
+                }}
+              >
+                Use Lite Mode Instead
+              </button>
+              <button
+                class="btn btn-primary"
+                disabled={isInstalling}
+                onClick={handleRunInstall}
+              >
+                {isInstalling ? 'Installing...' : 'Install Apptainer (One-Click)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Platform Info Modal (for non-Linux platforms) */}
+      {showPlatformModal && (
+        <div class="modal-backdrop">
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>ℹ️ Heavy Mode Platform Information</h3>
+            </div>
+            <div class="modal-body">
+              <p style="margin-bottom: 0.75rem;">
+                {engineCaps?.status_message ||
+                  'Heavy Mode (native rootless containers) is currently optimized for Linux environments.'}
+              </p>
+              <p style="color: #94a3b8; font-size: 0.85rem;">
+                <strong>Lite Mode (Wazero WASM)</strong> provides high-speed, instant in-memory compute on macOS and Windows without requiring any container runtime or Docker VM.
+              </p>
+            </div>
+            <div class="modal-actions">
+              <button
+                class="btn btn-primary"
+                onClick={() => {
+                  setShowPlatformModal(false);
+                  setComputeMode('wasm');
+                }}
+              >
+                Continue in Lite Mode
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

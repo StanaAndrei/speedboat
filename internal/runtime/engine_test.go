@@ -117,4 +117,22 @@ func TestApptainerEnginePullAndExecute(t *testing.T) {
 	}
 }
 
+func TestDetectHostGPU(t *testing.T) {
+	hasGPU, vendor := DetectHostGPU()
+	t.Logf("Detected GPU: hasGPU=%v, vendor=%s", hasGPU, vendor)
+}
 
+func TestApptainerGPUFlags(t *testing.T) {
+	eng := NewApptainerEngine()
+	if !eng.IsAvailable() {
+		t.Skip("apptainer not available")
+	}
+	eng.SetGPUEnabled(true)
+	if !eng.GPUEnabled {
+		t.Errorf("expected GPUEnabled to be true")
+	}
+	eng.SetGPUEnabled(false)
+	if eng.GPUEnabled {
+		t.Errorf("expected GPUEnabled to be false")
+	}
+}

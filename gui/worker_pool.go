@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"speedboat/internal/protocol"
+	speedboatRuntime "speedboat/internal/runtime"
 	"speedboat/internal/transport"
 
 	"github.com/nats-io/nats.go"
@@ -32,12 +34,21 @@ type WorkerCallbacks struct {
 }
 
 type WorkerPool struct {
-	projectID  string
-	natsURL    string
-	workerBase string
-	ip         string
-	wasmBytes  []byte
-	callbacks  WorkerCallbacks
+	projectID   string
+	natsURL     string
+	workerBase  string
+	ip          string
+	computeMode string
+	masterHost  string
+	callbacks   WorkerCallbacks
+
+	// Lite Mode (WASM)
+	wasmBytes []byte
+	wRuntime  wazero.Runtime
+	compiled  wazero.CompiledModule
+
+	// Heavy Mode (Container Engine)
+	engine speedboatRuntime.Engine
 
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -47,32 +58,65 @@ type WorkerPool struct {
 	targetCap int
 	activeCap int
 
-	nc       *nats.Conn
-	wRuntime wazero.Runtime
-	compiled wazero.CompiledModule
+	nc *nats.Conn
 
 	tasksCompleted atomic.Int64
 	totalComputeMs atomic.Int64
 }
 
 func NewWorkerPool(
-	projectID, natsURL, workerBase, ip string,
+	projectID, natsURL, workerBase, ip, computeMode, masterHost string,
 	wasmBytes []byte,
+	engine speedboatRuntime.Engine,
 	concurrency int,
 	callbacks WorkerCallbacks,
 ) *WorkerPool {
 	if concurrency < 1 {
 		concurrency = 1
 	}
-	return &WorkerPool{
-		projectID:  projectID,
-		natsURL:    natsURL,
-		workerBase: workerBase,
-		ip:         ip,
-		wasmBytes:  wasmBytes,
-		targetCap:  concurrency,
-		callbacks:  callbacks,
+	if computeMode == "" {
+		computeMode = "wasm"
 	}
+	return &WorkerPool{
+		projectID:   projectID,
+		natsURL:     natsURL,
+		workerBase:  workerBase,
+		ip:          ip,
+		computeMode: computeMode,
+		masterHost:  masterHost,
+		wasmBytes:   wasmBytes,
+		engine:      engine,
+		targetCap:   concurrency,
+		callbacks:   callbacks,
+	}
+}
+
+func (p *WorkerPool) resolveImageRegistry(image string) string {
+	if p.masterHost == "" || p.masterHost == "localhost" || p.masterHost == "127.0.0.1" {
+		return image
+	}
+
+	for _, prefix := range []string{"docker://localhost:", "docker://127.0.0.1:", "localhost:", "127.0.0.1:"} {
+		if strings.HasPrefix(image, prefix) {
+			hasDockerPrefix := strings.HasPrefix(image, "docker://")
+			trimmed := strings.TrimPrefix(image, "docker://")
+			parts := strings.SplitN(trimmed, "/", 2)
+			if len(parts) == 2 {
+				hostPort := parts[0]
+				port := ""
+				if idx := strings.Index(hostPort, ":"); idx != -1 {
+					port = hostPort[idx:]
+				}
+				newHostPort := p.masterHost + port
+				newImage := newHostPort + "/" + parts[1]
+				if hasDockerPrefix {
+					newImage = "docker://" + newImage
+				}
+				return newImage
+			}
+		}
+	}
+	return image
 }
 
 func (p *WorkerPool) Start(parentCtx context.Context) error {
@@ -86,19 +130,23 @@ func (p *WorkerPool) Start(parentCtx context.Context) error {
 	p.nc = nc
 	p.log("success", "✓ Connected to NATS cluster")
 
-	p.log("info", fmt.Sprintf("⚙️ Compiling WASM module in-memory with wazero JIT (%d KB)...", len(p.wasmBytes)/1024))
-	r := wazero.NewRuntime(p.ctx)
-	p.wRuntime = r
-	wasi_snapshot_preview1.MustInstantiate(p.ctx, r)
+	if p.computeMode == "apptainer" {
+		p.log("info", fmt.Sprintf("🚀 Heavy Mode enabled (Apptainer native container runtime)"))
+	} else {
+		p.log("info", fmt.Sprintf("⚙️ Compiling WASM module in-memory with wazero JIT (%d KB)...", len(p.wasmBytes)/1024))
+		r := wazero.NewRuntime(p.ctx)
+		p.wRuntime = r
+		wasi_snapshot_preview1.MustInstantiate(p.ctx, r)
 
-	compiled, err := r.CompileModule(p.ctx, p.wasmBytes)
-	if err != nil {
-		_ = r.Close(p.ctx)
-		nc.Close()
-		return fmt.Errorf("wazero JIT compilation failed: %w", err)
+		compiled, err := r.CompileModule(p.ctx, p.wasmBytes)
+		if err != nil {
+			_ = r.Close(p.ctx)
+			nc.Close()
+			return fmt.Errorf("wazero JIT compilation failed: %w", err)
+		}
+		p.compiled = compiled
+		p.log("success", "✓ WASM module JIT compiled to native code")
 	}
-	p.compiled = compiled
-	p.log("success", "✓ WASM module JIT compiled to native code")
 
 	p.setStatus("idle", fmt.Sprintf("Running with %d worker thread(s)", p.targetCap))
 
@@ -263,21 +311,42 @@ func (p *WorkerPool) workerLoop(workerNum int) {
 			p.setStatus("computing", fmt.Sprintf("Thread %d: Crunching %s...", workerNum, taskID))
 			start := time.Now()
 
-			var stdout, stderr bytes.Buffer
-			modConfig := wazero.NewModuleConfig().
-				WithName("").
-				WithStdin(bytes.NewReader(resp.Task)).
-				WithStdout(&stdout).
-				WithStderr(&stderr).
-				WithArgs("wasi_app")
+			var stdoutBytes []byte
+			var execErr error
 
-			mod, execErr := p.wRuntime.InstantiateModule(p.ctx, p.compiled, modConfig)
-			if execErr != nil {
-				if exitErr, ok := execErr.(*sys.ExitError); ok && exitErr.ExitCode() == 0 {
-					execErr = nil
+			if p.computeMode == "apptainer" {
+				image := task.Image
+				if image == "" {
+					image = "speedboat/worker:latest"
+				}
+				image = p.resolveImageRegistry(image)
+
+				if pullErr := p.engine.PullImage(p.ctx, image); pullErr != nil {
+					execErr = fmt.Errorf("container pull failed: %w", pullErr)
+				} else {
+					stdoutBytes, execErr = p.engine.Execute(p.ctx, image, resp.Task)
 				}
 			} else {
-				_ = mod.Close(p.ctx)
+				// Wazero WASM execution
+				var stdout, stderr bytes.Buffer
+				modConfig := wazero.NewModuleConfig().
+					WithName("").
+					WithStdin(bytes.NewReader(resp.Task)).
+					WithStdout(&stdout).
+					WithStderr(&stderr).
+					WithArgs("wasi_app")
+
+				mod, err := p.wRuntime.InstantiateModule(p.ctx, p.compiled, modConfig)
+				if err != nil {
+					if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() == 0 {
+						execErr = nil
+					} else {
+						execErr = err
+					}
+				} else {
+					_ = mod.Close(p.ctx)
+				}
+				stdoutBytes = stdout.Bytes()
 			}
 
 			duration := time.Since(start)
@@ -296,12 +365,12 @@ func (p *WorkerPool) workerLoop(workerNum int) {
 				}
 			} else {
 				// Parse stdout
-				if err := json.Unmarshal(stdout.Bytes(), &taskResult); err != nil {
+				if err := json.Unmarshal(stdoutBytes, &taskResult); err != nil {
 					taskResult = protocol.TaskResult{
 						TaskID:    taskID,
 						ProjectID: p.projectID,
 						Status:    "ok",
-						Output:    json.RawMessage(stdout.Bytes()),
+						Output:    json.RawMessage(stdoutBytes),
 						WorkerID:  workerID,
 						IP:        p.ip,
 					}
@@ -316,7 +385,7 @@ func (p *WorkerPool) workerLoop(workerNum int) {
 						taskResult.Status = "ok"
 					}
 				}
-				p.log("success", fmt.Sprintf("📤 [%s] Task %s completed in %dms. Publishing result...", workerID, taskID, durationMs))
+				p.log("success", fmt.Sprintf("📤 [%s] Task \"%s\" completed in %dms. Publishing result...", workerID, taskID, durationMs))
 			}
 
 			resBytes, err := json.Marshal(taskResult)
