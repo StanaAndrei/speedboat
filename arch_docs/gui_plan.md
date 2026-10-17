@@ -158,7 +158,7 @@ While Speedboat can offer an optional "instant try" web page using in-browser WA
    * Implement the optional one-click Alpine WSL2 provisioning wizard for advanced Windows tasks.
 
 
-# On Linux / WSL:
+# On Linux / WSL to win:
     sudo apt install gcc-mingw-w64
     wails build -platform windows/amd64
 

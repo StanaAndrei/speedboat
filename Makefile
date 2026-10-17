@@ -13,6 +13,11 @@ build-gui:
 	@mkdir -p build
 	@cp gui/build/bin/speedboat-gui build/speedboat-gui
 
+build-win:
+	cd gui && wails build -platform windows/amd64 -o speedboat_win.exe
+	@mkdir -p build
+	@cp gui/build/bin/speedboat_win.exe build/
+
 compose-up:
 	cd ./examples && docker compose up -d
 
