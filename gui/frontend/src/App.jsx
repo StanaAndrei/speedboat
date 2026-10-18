@@ -16,6 +16,8 @@ export function App() {
   const [metrics, setMetrics] = useState({ tasks_completed: 0, total_compute_ms: 0, active_threads: 0, average_latency_ms: 0 });
   const [logs, setLogs] = useState([]);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [logFilter, setLogFilter] = useState('all');
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
   // Modal states
   const [showInstallModal, setShowInstallModal] = useState(false);
@@ -26,6 +28,25 @@ export function App() {
   const [installProgress, setInstallProgress] = useState({ percent: 0, message: '' });
 
   const terminalRef = useRef(null);
+
+  const getPilotRank = (completed) => {
+    if (completed >= 200) return { title: 'Mach-10 Fleet Commander', icon: '👑' };
+    if (completed >= 50) return { title: 'Quantum Grid Master', icon: '💠' };
+    if (completed >= 20) return { title: 'Supersonic Voyager', icon: '🚀' };
+    if (completed >= 5) return { title: 'Hydrofoil Specialist', icon: '🌊' };
+    return { title: 'Cadet Pilot', icon: '⚡' };
+  };
+
+  const handleCopyLogs = async () => {
+    const text = logs.map((l) => `[${l.time}] [${l.level?.toUpperCase()}] ${l.msg}`).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 1200);
+    } catch (e) {
+      console.error('Copy failed:', e);
+    }
+  };
 
   // Refresh engine capabilities
   const refreshCaps = async () => {
@@ -239,21 +260,52 @@ export function App() {
     return `${(ms / 1000).toFixed(1)} s`;
   };
 
+  const pilotRank = getPilotRank(metrics.tasks_completed);
+  const credits = (metrics.tasks_completed * 100) + Math.floor(metrics.total_compute_ms / 100);
+  const filteredLogs = logs.filter((l) => {
+    if (logFilter === 'all') return true;
+    if (logFilter === 'info') return l.level === 'info' || l.level === 'success';
+    if (logFilter === 'err') return l.level === 'err' || l.level === 'warn';
+    return true;
+  });
+
   return (
     <div class="container">
       <header>
         <div class="brand">
-          <svg viewBox="0 0 24 24">
-            <path d="M12 2L2 22h20L12 2zm0 3.8L18.5 19H5.5L12 5.8zM11 11v4h2v-4h-2zm0 6v2h2v-2h-2z" />
-          </svg>
-          <div>
+          <div class="brand-icon-wrap">
+            <svg class="brand-logo" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="guiThrusterGlow" x1="18" y1="26" x2="18" y2="34" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#00f0ff" stop-opacity="0.8" />
+                  <stop offset="1" stop-color="#a855f7" stop-opacity="0" />
+                </linearGradient>
+                <linearGradient id="guiHullGradient" x1="18" y1="3" x2="18" y2="24" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#1e293b" />
+                  <stop offset="1" stop-color="#0f172a" />
+                </linearGradient>
+              </defs>
+              <path d="M14 26L18 34L22 26" stroke="url(#guiThrusterGlow)" stroke-width="2.5" stroke-linecap="round" />
+              <path d="M6 21L12 18M30 21L24 18" stroke="#00f0ff" stroke-width="1.2" stroke-linecap="round" opacity="0.6" />
+              <polygon points="18,3 9,23 18,19 27,23" fill="url(#guiHullGradient)" stroke="#00f0ff" stroke-width="1.4" stroke-linejoin="round" />
+              <polygon points="18,8 14,18 18,16 22,18" fill="#00f0ff" fill-opacity="0.85" />
+            </svg>
+          </div>
+          <div class="brand-text">
             <h1>Speedboat Desktop</h1>
-            <p style="font-size: 0.85rem; color: var(--muted);">High-Speed Distributed Volunteer Grid</p>
+            <div class="brand-sub">
+              <span>Hydrofoil Grid</span>
+              <span style={{ opacity: 0.4 }}>//</span>
+              <span>Universal Volunteer Agent</span>
+            </div>
           </div>
         </div>
 
         <div class="status-badge">
-          <span class={`dot ${status.state}`}></span>
+          <div class="radar-wrap">
+            <span class={`dot ${status.state}`}></span>
+            <span class="radar-wave"></span>
+          </div>
           <span>{status.text}</span>
         </div>
       </header>
@@ -288,7 +340,7 @@ export function App() {
             <div class="preview-card">
               <div class="preview-row">
                 <span class="preview-label">Project:</span>
-                <span class="preview-value" style="color: var(--accent); font-size: 1.1rem;">
+                <span class="preview-value" style="color: var(--wake-cyan); font-size: 1.1rem;">
                   {preview.project_id}
                 </span>
               </div>
@@ -344,8 +396,8 @@ export function App() {
           {computeMode === 'apptainer' && engineCaps && (
             <div class="engine-status-row">
               <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span style="color: var(--success);">✓</span>
-                <span style="color: #94a3b8;">{engineCaps.status_message}</span>
+                <span style="color: var(--quantum-emerald);">✓</span>
+                <span style="color: var(--text-secondary);">{engineCaps.status_message}</span>
               </div>
               {engineCaps.gpu_available && (
                 <label class="gpu-toggle">
@@ -386,27 +438,61 @@ export function App() {
       ) : (
         /* DASHBOARD VIEW */
         <>
+          {/* Gamification Ribbon (temporarily commented out)
+          <div class="gamification-bar">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '0.74rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em' }}>
+                Pilot Rank
+              </span>
+              <div class="rank-tier-badge">
+                <span>{pilotRank.icon}</span>
+                <span>{pilotRank.title}</span>
+              </div>
+            </div>
+
+            <div class="credit-ticker-box">
+              <span>Volunteer Credits:</span>
+              <span class="credit-val">{credits.toLocaleString()}</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                FLOPS-CR
+              </span>
+            </div>
+          </div>
+          */}
+
           <div class="stats-grid">
             <div class="stat-card">
-              <div class="stat-title">Project</div>
-              <div class="stat-value" style="font-size: 1.3rem; color: var(--accent);">
+              <div class="stat-header">
+                <div class="stat-title">Target Project</div>
+                <span class="stat-icon">🎯</span>
+              </div>
+              <div class="stat-value highlight-cyan" style={{ fontSize: '1.25rem' }}>
                 {preview ? preview.project_id : '-'}
               </div>
             </div>
             <div class="stat-card">
-              <div class="stat-title">Runtime Engine</div>
-              <div class="stat-value" style="font-size: 1.1rem; color: #38bdf8;">
+              <div class="stat-header">
+                <div class="stat-title">Runtime Engine</div>
+                <span class="stat-icon">{computeMode === 'apptainer' ? '🚀' : '⚡'}</span>
+              </div>
+              <div class="stat-value" style={{ fontSize: '1.1rem', color: '#38bdf8' }}>
                 {computeMode === 'apptainer'
-                  ? `🚀 Apptainer ${enableGPU ? '(+GPU)' : ''}`
-                  : '⚡ Wazero WASM'}
+                  ? `Apptainer ${enableGPU ? '(+GPU)' : ''}`
+                  : 'Wazero WASM'}
               </div>
             </div>
             <div class="stat-card">
-              <div class="stat-title">Tasks Completed</div>
-              <div class="stat-value">{metrics.tasks_completed}</div>
+              <div class="stat-header">
+                <div class="stat-title">Tasks Completed</div>
+                <span class="stat-icon">⚡</span>
+              </div>
+              <div class="stat-value highlight-emerald">{metrics.tasks_completed}</div>
             </div>
             <div class="stat-card">
-              <div class="stat-title">Compute Time</div>
+              <div class="stat-header">
+                <div class="stat-title">Total Compute Time</div>
+                <span class="stat-icon">⏱️</span>
+              </div>
               <div class="stat-value">{formatDuration(metrics.total_compute_ms)}</div>
             </div>
           </div>
@@ -440,34 +526,75 @@ export function App() {
 
           <div class="terminal-container">
             <div class="terminal-header">
-              <div class="terminal-dots">
-                <span></span><span></span><span></span>
+              <div class="terminal-meta">
+                <div class="terminal-dots">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="terminal-title">
+                  <span class="pulse-led"></span>
+                  <span>{computeMode === 'apptainer' ? 'apptainer-container-log' : 'wazero-wasm-log'} ({systemInfo.worker_id})</span>
+                </div>
               </div>
-              <div class="terminal-title">
-                {computeMode === 'apptainer' ? 'apptainer-container-log' : 'wazero-wasm-log'} ({systemInfo.worker_id})
-              </div>
-              <div style="display: flex; gap: 0.75rem; align-items: center;">
-                <label style="font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
+
+              <div class="terminal-actions">
+                <div class="filter-tabs">
+                  <button
+                    class={`filter-tab ${logFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setLogFilter('all')}
+                  >
+                    ALL
+                  </button>
+                  <button
+                    class={`filter-tab ${logFilter === 'info' ? 'active' : ''}`}
+                    onClick={() => setLogFilter('info')}
+                  >
+                    INFO
+                  </button>
+                  <button
+                    class={`filter-tab ${logFilter === 'err' ? 'active' : ''}`}
+                    onClick={() => setLogFilter('err')}
+                  >
+                    ERRORS
+                  </button>
+                </div>
+
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={autoScroll}
                     onChange={(e) => setAutoScroll(e.target.checked)}
+                    style={{ accentColor: 'var(--wake-cyan)' }}
                   /> Auto-scroll
                 </label>
+
                 <button
                   class="btn btn-outline"
-                  style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
+                  style={{
+                    padding: '0.25rem 0.65rem',
+                    fontSize: '0.74rem',
+                    borderColor: copyFeedback ? 'var(--quantum-emerald)' : '',
+                    color: copyFeedback ? 'var(--quantum-emerald)' : '',
+                  }}
+                  onClick={handleCopyLogs}
+                >
+                  {copyFeedback ? '✓ Copied' : 'Copy'}
+                </button>
+
+                <button
+                  class="btn btn-outline"
+                  style={{ padding: '0.25rem 0.65rem', fontSize: '0.74rem' }}
                   onClick={() => setLogs([])}
                 >
                   Clear
                 </button>
               </div>
             </div>
+
             <div class="terminal-body" ref={terminalRef}>
-              {logs.length === 0 ? (
-                <div style="color: var(--muted); font-style: italic;">Awaiting compute tasks...</div>
+              {filteredLogs.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Awaiting compute tasks...</div>
               ) : (
-                logs.map((l, idx) => (
+                filteredLogs.map((l, idx) => (
                   <div key={idx} class="log-line">
                     <span class="log-time">[{l.time}]</span>
                     <span class={`log-${l.level}`}>{l.msg}</span>

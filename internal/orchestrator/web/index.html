@@ -3,60 +3,145 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Speedboat - Volunteer Computing</title>
+  <title>Speedboat Grid - High-Speed Volunteer Telemetry</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="container">
     <header>
       <div class="brand">
-        <svg viewBox="0 0 24 24">
-          <path d="M12 2L2 22h20L12 2zm0 3.8L18.5 19H5.5L12 5.8zM11 11v4h2v-4h-2zm0 6v2h2v-2h-2z"/>
-        </svg>
-        <div>
+        <div class="brand-icon-wrap">
+          <svg class="brand-logo" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="thrusterGlow" x1="18" y1="26" x2="18" y2="34" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00f0ff" stop-opacity="0.8"/>
+                <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="hullGradient" x1="18" y1="3" x2="18" y2="24" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#1e293b"/>
+                <stop offset="1" stop-color="#0f172a"/>
+              </linearGradient>
+            </defs>
+            <!-- Thruster trails -->
+            <path d="M14 26L18 34L22 26" stroke="url(#thrusterGlow)" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- Hydrodynamic wake lines -->
+            <path d="M6 21L12 18M30 21L24 18" stroke="#00f0ff" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+            <!-- Supersonic Hydrofoil Hull -->
+            <polygon points="18,3 9,23 18,19 27,23" fill="url(#hullGradient)" stroke="#00f0ff" stroke-width="1.4" stroke-linejoin="round"/>
+            <!-- Inner Cockpit Glow -->
+            <polygon points="18,8 14,18 18,16 22,18" fill="#00f0ff" fill-opacity="0.85"/>
+          </svg>
+        </div>
+        <div class="brand-text">
           <h1>Speedboat Grid</h1>
-          <p style="font-size: 0.85rem; color: var(--muted);">Zero-Install Volunteer Worker</p>
+          <div class="brand-sub">
+            <span>Hydrofoil Telemetry</span>
+            <span style="opacity: 0.4;">//</span>
+            <span>Browser WASM Node</span>
+          </div>
         </div>
       </div>
-      <div class="status-badge" id="status-badge">
-        <span class="dot" id="status-dot"></span>
-        <span id="status-text">Initializing...</span>
+
+      <div class="header-meta">
+        <div class="status-badge" id="status-badge">
+          <div class="radar-wrap">
+            <span class="dot connecting" id="status-dot"></span>
+            <span class="radar-wave"></span>
+          </div>
+          <span id="status-text">Initializing Grid...</span>
+        </div>
       </div>
     </header>
 
+    <!-- Gamification & Volunteer Telemetry Banner (temporarily commented out)
+    <div class="gamification-bar">
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <span style="font-size: 0.74rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 0.08em;">Pilot Rank</span>
+        <div class="rank-tier-badge" id="rank-badge">
+          <span id="rank-icon">⚡</span>
+          <span id="rank-title">Cadet Pilot</span>
+        </div>
+      </div>
+
+      <div class="credit-ticker-box">
+        <span>Volunteer Credits:</span>
+        <span class="credit-val" id="val-credits">0</span>
+        <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">FLOPS-CR</span>
+      </div>
+    </div>
+    -->
+
+    <!-- Main Telemetry Stats Grid -->
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-title">Project</div>
-        <div class="stat-value" id="val-project" style="font-size: 1.3rem;">-</div>
+        <div class="stat-header">
+          <div class="stat-title">Target Project</div>
+          <span class="stat-icon">🎯</span>
+        </div>
+        <div class="stat-value highlight-cyan" id="val-project" style="font-size: 1.25rem;">-</div>
       </div>
+
       <div class="stat-card">
-        <div class="stat-title">Tasks Completed</div>
-        <div class="stat-value" id="val-tasks">0</div>
+        <div class="stat-header">
+          <div class="stat-title">Tasks Completed</div>
+          <span class="stat-icon">⚡</span>
+        </div>
+        <div class="stat-value highlight-emerald" id="val-tasks">0</div>
       </div>
+
       <div class="stat-card">
-        <div class="stat-title">Total Compute Time</div>
+        <div class="stat-header">
+          <div class="stat-title">Total Compute Time</div>
+          <span class="stat-icon">⏱️</span>
+        </div>
         <div class="stat-value" id="val-time">0 ms</div>
       </div>
+
       <div class="stat-card">
-        <div class="stat-title">Worker ID</div>
-        <div class="stat-value" id="val-worker" style="font-size: 1.1rem; font-family: monospace;">-</div>
+        <div class="stat-header">
+          <div class="stat-title">Worker Node ID</div>
+          <span class="stat-icon">🌐</span>
+        </div>
+        <div class="stat-mono" id="val-worker">-</div>
       </div>
     </div>
 
-    <div class="controls">
-      <button class="btn btn-primary" id="btn-toggle">Pause Compute</button>
-      <label style="font-size: 0.85rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
-        <input type="checkbox" id="chk-autoscroll" checked> Auto-scroll Terminal
+    <!-- Action & Controls Bar -->
+    <div class="controls-bar">
+      <div class="btn-group">
+        <button class="btn btn-primary" id="btn-toggle">
+          <span>⏸ Pause Compute</span>
+        </button>
+      </div>
+
+      <label class="toggle-label">
+        <input type="checkbox" id="chk-autoscroll" checked>
+        <span>Auto-scroll Console</span>
       </label>
     </div>
 
+    <!-- Telemetry Console HUD -->
     <div class="terminal-container">
       <div class="terminal-header">
-        <div class="terminal-dots">
-          <span></span><span></span><span></span>
+        <div class="terminal-meta">
+          <div class="terminal-dots">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="terminal-title">
+            <span class="pulse-led"></span>
+            <span>telemetry-stream // wasm-worker</span>
+          </div>
         </div>
-        <div class="terminal-title">volunteer-console</div>
-        <button class="btn btn-outline" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" id="btn-clear">Clear</button>
+
+        <div class="terminal-actions">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="all">ALL</button>
+            <button class="filter-tab" data-filter="info">INFO</button>
+            <button class="filter-tab" data-filter="err">ERRORS</button>
+          </div>
+          <button class="btn btn-outline" style="padding: 0.25rem 0.6rem; font-size: 0.74rem;" id="btn-copy">Copy</button>
+          <button class="btn btn-outline" style="padding: 0.25rem 0.6rem; font-size: 0.74rem;" id="btn-clear">Clear</button>
+        </div>
       </div>
       <div class="terminal-body" id="terminal"></div>
     </div>
@@ -67,6 +152,8 @@
     let tasksCompleted = 0;
     let totalComputeMs = 0;
     let worker = null;
+    let logEntries = [];
+    let activeFilter = 'all';
 
     const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
@@ -74,19 +161,85 @@
     const valTasks = document.getElementById('val-tasks');
     const valTime = document.getElementById('val-time');
     const valWorker = document.getElementById('val-worker');
+    const valCredits = document.getElementById('val-credits');
+    const rankBadge = document.getElementById('rank-badge');
+    const rankTitle = document.getElementById('rank-title');
+    const rankIcon = document.getElementById('rank-icon');
     const btnToggle = document.getElementById('btn-toggle');
     const btnClear = document.getElementById('btn-clear');
+    const btnCopy = document.getElementById('btn-copy');
     const chkAutoScroll = document.getElementById('chk-autoscroll');
     const terminal = document.getElementById('terminal');
+    const filterTabs = document.querySelectorAll('.filter-tab');
+
+    function updateGamification() {
+      if (!valCredits || !rankTitle || !rankIcon) return;
+      // Calculate FLOPS-Credits
+      const credits = (tasksCompleted * 100) + Math.floor(totalComputeMs / 100);
+      valCredits.textContent = credits.toLocaleString();
+
+      // Update pilot rank tier
+      let rank = 'Cadet Pilot';
+      let icon = '⚡';
+      let styleClass = 'rgba(168, 85, 247, 0.12)';
+
+      if (tasksCompleted >= 200) {
+        rank = 'Mach-10 Fleet Commander';
+        icon = '👑';
+      } else if (tasksCompleted >= 50) {
+        rank = 'Quantum Grid Master';
+        icon = '💠';
+      } else if (tasksCompleted >= 20) {
+        rank = 'Supersonic Voyager';
+        icon = '🚀';
+      } else if (tasksCompleted >= 5) {
+        rank = 'Hydrofoil Specialist';
+        icon = '🌊';
+      }
+
+      rankTitle.textContent = rank;
+      rankIcon.textContent = icon;
+    }
+
+    function renderLogs() {
+      terminal.innerHTML = '';
+      const filtered = logEntries.filter(entry => {
+        if (activeFilter === 'all') return true;
+        if (activeFilter === 'info') return entry.type === 'info' || entry.type === 'success';
+        if (activeFilter === 'err') return entry.type === 'err' || entry.type === 'warn';
+        return true;
+      });
+
+      for (const entry of filtered) {
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        div.innerHTML = `<span class="log-time">[${entry.time}]</span><span class="log-${entry.type}">${escapeHtml(entry.msg)}</span>`;
+        terminal.appendChild(div);
+      }
+
+      if (chkAutoScroll.checked) {
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+    }
 
     function log(message, type = 'info') {
       const time = new Date().toLocaleTimeString();
-      const div = document.createElement('div');
-      div.className = 'log-line';
-      div.innerHTML = `<span class="log-time">[${time}]</span><span class="log-${type}">${escapeHtml(message)}</span>`;
-      terminal.appendChild(div);
-      if (chkAutoScroll.checked) {
-        terminal.scrollTop = terminal.scrollHeight;
+      const entry = { time, msg: message, type };
+      logEntries.push(entry);
+      if (logEntries.length > 300) {
+        logEntries.shift();
+      }
+
+      if (activeFilter === 'all' || 
+         (activeFilter === 'info' && (type === 'info' || type === 'success')) || 
+         (activeFilter === 'err' && (type === 'err' || type === 'warn'))) {
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        div.innerHTML = `<span class="log-time">[${time}]</span><span class="log-${type}">${escapeHtml(message)}</span>`;
+        terminal.appendChild(div);
+        if (chkAutoScroll.checked) {
+          terminal.scrollTop = terminal.scrollHeight;
+        }
       }
     }
 
@@ -103,6 +256,35 @@
       if (ms < 1000) return `${ms} ms`;
       return `${(ms / 1000).toFixed(2)} s`;
     }
+
+    // Log filtering
+    filterTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        filterTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        activeFilter = tab.dataset.filter;
+        renderLogs();
+      });
+    });
+
+    // Copy logs
+    btnCopy.addEventListener('click', async () => {
+      const text = logEntries.map(e => `[${e.time}] [${e.type.toUpperCase()}] ${e.msg}`).join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        const originalText = btnCopy.textContent;
+        btnCopy.textContent = '✓ Copied';
+        btnCopy.style.borderColor = 'var(--quantum-emerald)';
+        btnCopy.style.color = 'var(--quantum-emerald)';
+        setTimeout(() => {
+          btnCopy.textContent = originalText;
+          btnCopy.style.borderColor = '';
+          btnCopy.style.color = '';
+        }, 1200);
+      } catch (err) {
+        console.error('Copy failed:', err);
+      }
+    });
 
     async function init() {
       // 1. Resolve configuration from query params or /info
@@ -127,7 +309,6 @@
         projectId = 'default-project';
       }
       if (!natsWs) {
-        // Fallback default: same host with port 8080
         natsWs = `ws://${window.location.hostname || 'localhost'}:8080`;
       }
 
@@ -155,12 +336,13 @@
           totalComputeMs += data.durationMs;
           valTasks.textContent = tasksCompleted;
           valTime.textContent = formatTime(totalComputeMs);
+          updateGamification();
         }
       };
 
       worker.onerror = (err) => {
         log(`Worker fatal error: ${err.message}`, 'err');
-        setStatus('paused', 'Error');
+        setStatus('error', 'Worker Error');
       };
 
       // Send initial config to worker
@@ -173,18 +355,20 @@
           wasmUrl: '/payload.wasm'
         }
       });
+
+      updateGamification();
     }
 
     btnToggle.addEventListener('click', () => {
       isPaused = !isPaused;
       if (isPaused) {
-        btnToggle.textContent = 'Resume Compute';
+        btnToggle.innerHTML = '<span>▶ Resume Compute</span>';
         btnToggle.className = 'btn btn-outline';
-        setStatus('paused', 'Paused');
+        setStatus('paused', 'Compute Paused');
         log('⏸️ Compute paused by volunteer', 'warn');
         worker?.postMessage({ action: 'pause' });
       } else {
-        btnToggle.textContent = 'Pause Compute';
+        btnToggle.innerHTML = '<span>⏸ Pause Compute</span>';
         btnToggle.className = 'btn btn-primary';
         setStatus('idle', 'Resuming...');
         log('▶️ Compute resumed', 'info');
@@ -193,6 +377,7 @@
     });
 
     btnClear.addEventListener('click', () => {
+      logEntries = [];
       terminal.innerHTML = '';
     });
 
@@ -200,3 +385,4 @@
   </script>
 </body>
 </html>
+
