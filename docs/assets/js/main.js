@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Animated Hydrofoil Wake & Laminar Stream Canvas
+ * Animated Hydrofoil Boat & Laminar V-Wake Canvas
  */
 function initWakeCanvas() {
   const canvas = document.getElementById('wake-canvas');
@@ -28,48 +28,188 @@ function initWakeCanvas() {
     height = canvas.height = window.innerHeight;
   });
 
-  // Wake stream particles
-  const particleCount = Math.min(50, Math.floor(width / 25));
-  const particles = [];
+  const boat = {
+    x: width / 2,
+    y: Math.min(130, height * 0.16),
+    targetX: width / 2,
+    tilt: 0
+  };
 
-  for (let i = 0; i < particleCount; i++) {
-    particles.push({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      length: 40 + Math.random() * 80,
-      speed: 1.2 + Math.random() * 2.5,
-      opacity: 0.15 + Math.random() * 0.35,
-      color: Math.random() > 0.4 ? '0, 240, 255' : '168, 85, 247',
-      width: Math.random() > 0.7 ? 1.5 : 0.8
+  window.addEventListener('mousemove', (e) => {
+    boat.targetX = e.clientX;
+  }, { passive: true });
+
+  const wakeWaves = [];
+  const streamParticles = [];
+  let frame = 0;
+
+  function spawnWave() {
+    wakeWaves.push({
+      cx: boat.x,
+      cy: boat.y + 16,
+      spread: 0,
+      alpha: 0.38,
+      speed: 2.2,
+      maxSpread: Math.max(width * 0.65, 500)
     });
+  }
+
+  function spawnParticles() {
+    for (let i = 0; i < 2; i++) {
+      const isLeft = i === 0;
+      streamParticles.push({
+        x: boat.x + (isLeft ? -18 : 18) + (Math.random() * 6 - 3),
+        y: boat.y + 20,
+        vx: (isLeft ? -1 : 1) * (1.2 + Math.random() * 2.2),
+        vy: 2.2 + Math.random() * 2.8,
+        length: 8 + Math.random() * 18,
+        alpha: 0.4 + Math.random() * 0.3,
+        color: Math.random() > 0.3 ? '0, 240, 255' : '168, 85, 247'
+      });
+    }
   }
 
   function render() {
     ctx.clearRect(0, 0, width, height);
+    frame++;
 
-    // Draw laminar streamline wakes
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      p.y -= p.speed;
-      p.x += Math.sin(p.y * 0.005) * 0.4;
+    // Ease boat position toward mouse
+    boat.x += (boat.targetX - boat.x) * 0.04;
+    boat.tilt = (boat.targetX - boat.x) * 0.0012;
+    boat.y = Math.min(130, height * 0.16);
 
-      if (p.y + p.length < 0) {
-        p.y = height + Math.random() * 50;
-        p.x = Math.random() * width;
+    // Spawning
+    if (frame % 8 === 0) spawnWave();
+    if (frame % 3 === 0) spawnParticles();
+
+    // 1. Draw Expanding V-Wake Waves (Boat cutting through water)
+    for (let i = wakeWaves.length - 1; i >= 0; i--) {
+      const w = wakeWaves[i];
+      w.cy += w.speed;
+      w.spread += w.speed * 1.8;
+      w.alpha *= 0.988;
+
+      if (w.alpha < 0.01 || w.spread > w.maxSpread) {
+        wakeWaves.splice(i, 1);
+        continue;
       }
 
-      const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.length);
-      grad.addColorStop(0, `rgba(${p.color}, 0)`);
-      grad.addColorStop(0.5, `rgba(${p.color}, ${p.opacity})`);
-      grad.addColorStop(1, `rgba(${p.color}, 0)`);
+      ctx.save();
+      ctx.beginPath();
+      // Left V-wake arm
+      ctx.moveTo(w.cx, w.cy);
+      ctx.lineTo(w.cx - w.spread, w.cy + w.spread * 0.55);
+      // Right V-wake arm
+      ctx.moveTo(w.cx, w.cy);
+      ctx.lineTo(w.cx + w.spread, w.cy + w.spread * 0.55);
 
+      ctx.strokeStyle = `rgba(0, 240, 255, ${w.alpha})`;
+      ctx.lineWidth = 1.2;
+      ctx.shadowColor = '#00f0ff';
+      ctx.shadowBlur = 6;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 2. Draw Water Streamline Particles
+    for (let i = streamParticles.length - 1; i >= 0; i--) {
+      const p = streamParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.alpha *= 0.978;
+
+      if (p.alpha < 0.02 || p.y > height) {
+        streamParticles.splice(i, 1);
+        continue;
+      }
+
+      ctx.save();
       ctx.beginPath();
       ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x, p.y + p.length);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = p.width;
+      ctx.lineTo(p.x + p.vx * 2, p.y + p.length);
+      ctx.strokeStyle = `rgba(${p.color}, ${p.alpha})`;
+      ctx.lineWidth = 1;
       ctx.stroke();
+      ctx.restore();
     }
+
+    // 3. Draw Continuous Subtle Wake Rays (Bow spray lines)
+    ctx.save();
+    const rayAlpha = 0.12;
+    const gradLeft = ctx.createLinearGradient(boat.x - 14, boat.y + 14, 0, height);
+    gradLeft.addColorStop(0, `rgba(0, 240, 255, ${rayAlpha})`);
+    gradLeft.addColorStop(1, 'rgba(0, 240, 255, 0)');
+    ctx.beginPath();
+    ctx.moveTo(boat.x - 14, boat.y + 14);
+    ctx.lineTo(Math.max(0, boat.x - width * 0.6), height);
+    ctx.strokeStyle = gradLeft;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    const gradRight = ctx.createLinearGradient(boat.x + 14, boat.y + 14, width, height);
+    gradRight.addColorStop(0, `rgba(0, 240, 255, ${rayAlpha})`);
+    gradRight.addColorStop(1, 'rgba(0, 240, 255, 0)');
+    ctx.beginPath();
+    ctx.moveTo(boat.x + 14, boat.y + 14);
+    ctx.lineTo(Math.min(width, boat.x + width * 0.6), height);
+    ctx.strokeStyle = gradRight;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // 4. Draw Minimalist Hydrofoil Speedboat Hull
+    ctx.save();
+    ctx.translate(boat.x, boat.y);
+    ctx.rotate(boat.tilt);
+
+    // Glowing Thruster Flare
+    const thrusterGrad = ctx.createLinearGradient(0, 14, 0, 36);
+    thrusterGrad.addColorStop(0, 'rgba(0, 240, 255, 0.8)');
+    thrusterGrad.addColorStop(0.6, 'rgba(168, 85, 247, 0.4)');
+    thrusterGrad.addColorStop(1, 'rgba(168, 85, 247, 0)');
+    ctx.beginPath();
+    ctx.moveTo(-4, 16);
+    ctx.lineTo(0, 32);
+    ctx.lineTo(4, 16);
+    ctx.fillStyle = thrusterGrad;
+    ctx.fill();
+
+    // Lateral Hydrofoils
+    ctx.beginPath();
+    ctx.moveTo(-16, 14);
+    ctx.lineTo(-28, 22);
+    ctx.moveTo(16, 14);
+    ctx.lineTo(28, 22);
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Supersonic Hull Wedge
+    ctx.beginPath();
+    ctx.moveTo(0, -22); // Prow apex
+    ctx.lineTo(-15, 16); // Left stern
+    ctx.lineTo(0, 11);   // Keel notch
+    ctx.lineTo(15, 16);  // Right stern
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(10, 16, 30, 0.85)';
+    ctx.fill();
+    ctx.strokeStyle = '#00f0ff';
+    ctx.lineWidth = 1.4;
+    ctx.shadowColor = '#00f0ff';
+    ctx.shadowBlur = 10;
+    ctx.stroke();
+
+    // Inner Cockpit Glow
+    ctx.beginPath();
+    ctx.moveTo(0, -12);
+    ctx.lineTo(-6, 4);
+    ctx.lineTo(0, 2);
+    ctx.lineTo(6, 4);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.75)';
+    ctx.fill();
+
+    ctx.restore();
 
     requestAnimationFrame(render);
   }

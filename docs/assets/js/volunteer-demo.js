@@ -17,6 +17,7 @@ function initVolunteerTabs() {
   const tabPanes = document.querySelectorAll('.volunteer-tab-pane');
 
   function activateTab(tabId) {
+    if (!tabId) return;
     tabBtns.forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
     });
@@ -25,17 +26,41 @@ function initVolunteerTabs() {
     });
   }
 
+  // Handle pill button clicks on volunteer.html
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const target = btn.getAttribute('data-tab');
       activateTab(target);
-      window.location.hash = target;
+      history.pushState(null, null, `#${target}`);
     });
   });
 
-  const hash = window.location.hash.replace('#', '');
-  if (hash && ['desktop', 'cli', 'web'].includes(hash)) {
-    activateTab(hash);
+  // Handle dropdown links and in-page anchor links pointing to tabs
+  document.querySelectorAll('a[href*="#desktop"], a[href*="#cli"], a[href*="#web"]').forEach(link => {
+    link.addEventListener('click', () => {
+      const href = link.getAttribute('href') || '';
+      const hash = href.includes('#') ? href.split('#')[1] : '';
+      if (hash && ['desktop', 'cli', 'web'].includes(hash)) {
+        activateTab(hash);
+        if (window.location.pathname.includes('volunteer')) {
+          history.pushState(null, null, `#${hash}`);
+        }
+      }
+    });
+  });
+
+  // Listen for hashchange events (browser back/forward or hash updates)
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash && ['desktop', 'cli', 'web'].includes(hash)) {
+      activateTab(hash);
+    }
+  });
+
+  // Activate initial tab from URL hash
+  const initialHash = window.location.hash.replace('#', '');
+  if (initialHash && ['desktop', 'cli', 'web'].includes(initialHash)) {
+    activateTab(initialHash);
   }
 }
 

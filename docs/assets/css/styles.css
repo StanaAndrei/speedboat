@@ -1903,6 +1903,64 @@ body {
   }
 }
 
+/* ===================================================================
+   CALM / CLEAN SUBPAGE STYLING (For Master & Volunteer Guide Pages)
+   =================================================================== */
+body.doc-page {
+  background-color: #070a13;
+  background-image: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.05), transparent 50%);
+  background-size: 100% 100%;
+}
+
+body.doc-page .hero {
+  padding: 3rem 0 1.5rem;
+}
+
+body.doc-page .hero-title {
+  font-size: clamp(2rem, 3.8vw, 3rem);
+}
+
+body.doc-page .hero-sub {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  max-width: 720px;
+}
+
+body.doc-page .stat-card,
+body.doc-page .feature-card {
+  background: rgba(12, 17, 30, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: none;
+}
+
+body.doc-page .stat-card:hover,
+body.doc-page .feature-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.28);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+body.doc-page .code-block-wrapper {
+  background: #090e1b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body.doc-page .code-header {
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+body.doc-page .section {
+  padding: 3rem 0;
+}
+
+/* Ensure the video simulation frame in volunteer.html remains the prominent hero showcase */
+body.doc-page .sim-video-frame {
+  background: rgba(10, 15, 28, 0.92);
+  border: 1px solid rgba(0, 240, 255, 0.45);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 240, 255, 0.15);
+}
+
 /* Reduced Motion Support */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
