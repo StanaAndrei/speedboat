@@ -30,6 +30,10 @@ func TestInstallApptainerFlow(t *testing.T) {
 	capsBefore := mgr.GetCapabilities()
 	t.Logf("Before install: IsInstalled=%v, Path=%s", capsBefore.IsInstalled, capsBefore.BinaryPath)
 
+	if !capsBefore.CanAutoInstall {
+		t.Skipf("skipping install flow: auto-install not supported on %s", capsBefore.Platform)
+	}
+
 	err := mgr.Install(t.Context(), func(pct float64, msg string) {
 		t.Logf("[Install Progress %.0f%%] %s", pct, msg)
 	})
