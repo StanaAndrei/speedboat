@@ -1,11 +1,588 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speedboat Grid | Universal Volunteer Computing Blueprint</title>
+  <meta name="description" content="A modern, modular volunteer computing platform separating scientific logic from untrusted infrastructure with zero-friction single-binary and browser Web Workers.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><polygon points='18,3 9,23 18,19 27,23' fill='%2300f0ff'/></svg>">
 </head>
 <body>
-    Hello, World!
+  <!-- Dynamic Hydrofoil Wake Particle Canvas -->
+  <canvas id="wake-canvas"></canvas>
+
+  <!-- Topbar Navigation -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="index.html" class="brand">
+        <div class="brand-icon-wrap">
+          <svg class="brand-logo" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="thrusterGlow" x1="18" y1="26" x2="18" y2="34" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00f0ff" stop-opacity="0.8"/>
+                <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="hullGradient" x1="18" y1="3" x2="18" y2="24" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#1e293b"/>
+                <stop offset="1" stop-color="#0f172a"/>
+              </linearGradient>
+            </defs>
+            <path d="M14 26L18 34L22 26" stroke="url(#thrusterGlow)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M6 21L12 18M30 21L24 18" stroke="#00f0ff" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+            <polygon points="18,3 9,23 18,19 27,23" fill="url(#hullGradient)" stroke="#00f0ff" stroke-width="1.4" stroke-linejoin="round"/>
+            <polygon points="18,8 14,18 18,16 22,18" fill="#00f0ff" fill-opacity="0.85"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">SPEEDBOAT</span>
+          <div class="brand-sub">
+            <span class="live-dot"></span>
+            <span>HYPERGRID 2026</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Desktop Nav -->
+      <ul class="nav-links">
+        <li class="nav-item">
+          <a href="index.html" class="nav-link active">Home</a>
+        </li>
+        <li class="nav-item">
+          <a href="master.html" class="nav-link">Master Guide</a>
+        </li>
+        <li class="nav-item">
+          <a href="volunteer.html" class="nav-link dropdown-trigger">Volunteer Hub</a>
+          <ul class="dropdown-menu">
+            <li class="dropdown-item">
+              <a href="volunteer.html#desktop">
+                <span class="dropdown-icon">💻</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Desktop Agent (GUI)</span>
+                  <span class="dropdown-desc">15MB single binary (agent.exe)</span>
+                </div>
+              </a>
+            </li>
+            <li class="dropdown-item">
+              <a href="volunteer.html#cli">
+                <span class="dropdown-icon">⌨️</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Headless CLI Worker</span>
+                  <span class="dropdown-desc">For Linux servers & cloud VMs</span>
+                </div>
+              </a>
+            </li>
+            <li class="dropdown-item">
+              <a href="volunteer.html#web">
+                <span class="dropdown-icon">🌐</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Web Worker (Zero-Install)</span>
+                  <span class="dropdown-desc">Instant compute inside browser</span>
+                </div>
+              </a>
+            </li>
+          </ul>
+        </li>
+        <li class="nav-item">
+          <a href="https://github.com/StanaAndrei/speedboat" target="_blank" rel="noopener" class="nav-link">
+            <span>GitHub</span>
+            <span style="font-size: 0.75rem; opacity: 0.6;">↗</span>
+          </a>
+        </li>
+      </ul>
+
+      <!-- Action Buttons -->
+      <div class="nav-actions">
+        <a href="volunteer.html#web" class="btn btn-cyan btn-sm">Instant Web Compute</a>
+        <button class="btn btn-solid-cyan btn-sm" data-open-download>Download Agent</button>
+        <button class="mobile-toggle" aria-label="Toggle menu">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Dropdown Menu -->
+  <div class="mobile-menu">
+    <a href="index.html">Home</a>
+    <a href="master.html">Master Node Guide</a>
+    <a href="volunteer.html#desktop">Volunteer: Desktop (agent.exe)</a>
+    <a href="volunteer.html#cli">Volunteer: Headless CLI</a>
+    <a href="volunteer.html#web">Volunteer: Zero-Install Web Worker</a>
+    <a href="https://github.com/StanaAndrei/speedboat" target="_blank">GitHub Repository ↗</a>
+    <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem;">
+      <a href="volunteer.html#web" class="btn btn-cyan" style="flex: 1; text-align: center;">Web Compute</a>
+      <button class="btn btn-solid-cyan" data-open-download style="flex: 1;">Download</button>
+    </div>
+  </div>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="container">
+        <div class="hero-badge-wrap">
+          <div class="hero-pill">
+            <span class="radar-wrap">
+              <span class="status-dot active"></span>
+              <span class="radar-wave"></span>
+            </span>
+            <span>NEXT-GEN VOLUNTEER COMPUTING BLUEPRINT</span>
+          </div>
+        </div>
+
+        <h1 class="hero-title">
+          Universal Compute Grid.<br>
+          <span class="glow-cyan">Supersonic Speed. Zero Friction.</span>
+        </h1>
+
+        <p class="hero-sub">
+          <strong>Project Speedboat</strong> decouples heavy scientific simulation logic from untrusted infrastructure.
+          Deploy single-binary agents with in-memory JIT WebAssembly, leverage GPU-accelerated rootless containers,
+          or crunch planetary workloads directly in browser tabs without installing a single package.
+        </p>
+
+        <div class="hero-cta-cluster">
+          <a href="volunteer.html#web" class="btn btn-solid-cyan btn-lg">
+            <span>⚡ Start Web Computing</span>
+          </a>
+          <a href="master.html" class="btn btn-outline btn-lg">
+            <span>🎯 Master Setup Guide</span>
+          </a>
+          <button class="btn btn-plasma btn-lg" data-open-download>
+            <span>💾 Get Desktop Agent</span>
+          </button>
+        </div>
+
+        <!-- Telemetry Ticker -->
+        <div class="telemetry-ticker">
+          <div class="ticker-item">
+            <span class="ticker-label">
+              <span class="status-dot emerald"></span> Active Fleet Nodes
+            </span>
+            <span class="ticker-val emerald">1,482</span>
+          </div>
+          <div class="ticker-item">
+            <span class="ticker-label">Global Computational Throughput</span>
+            <span class="ticker-val cyan">84.2 TFLOPS</span>
+          </div>
+          <div class="ticker-item">
+            <span class="ticker-label">Tasks Verified Today</span>
+            <span class="ticker-val violet">2,419,080</span>
+          </div>
+          <div class="ticker-item">
+            <span class="ticker-label">Consensus Rate</span>
+            <span class="ticker-val emerald">99.94%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture Visualizer Section -->
+    <section class="section" style="padding-top: 2rem;">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">High-Altitude Architecture</span>
+          <h2 class="section-title">The "Modular Multi-Tier" Model</h2>
+          <p class="section-desc">
+            A real-time reactive architecture punching through firewalls, separating scientists from volunteer nodes. Click on any node to view real-time data flows.
+          </p>
+        </div>
+
+        <div class="arch-visualizer">
+          <div class="arch-grid-flow">
+            <!-- Master Node -->
+            <div class="arch-node active-node" data-node="master">
+              <div class="arch-node-header">
+                <div class="arch-node-icon">🎯</div>
+                <div>
+                  <div class="arch-node-title">Master Orchestrator</div>
+                  <div class="arch-node-sub">cmd/master</div>
+                </div>
+              </div>
+              <p class="arch-node-body">
+                Manages work streams, auto-bakes WASI bytecode and OCI containers, and performs 3-way consensus validation.
+              </p>
+              <div style="margin-top: 0.8rem; display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                <span class="badge badge-cyan">Splitter</span>
+                <span class="badge badge-cyan">Reducer</span>
+                <span class="badge badge-emerald">Consensus 2/3</span>
+              </div>
+            </div>
+
+            <!-- Bus Connector -->
+            <div class="bus-connector">
+              <span class="bus-title">NATS Fabric</span>
+              <div class="bus-pipe">
+                <div class="bus-packet"></div>
+              </div>
+              <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">TCP / WS</span>
+            </div>
+
+            <!-- Workers Stack -->
+            <div class="workers-stack">
+              <!-- Primary Worker -->
+              <div class="arch-node" data-node="desktop">
+                <div class="arch-node-header">
+                  <div class="arch-node-icon">💻</div>
+                  <div>
+                    <div class="arch-node-title">Primary Worker (Native Go Agent)</div>
+                    <div class="arch-node-sub">agent.exe / Wails v3 / CLI</div>
+                  </div>
+                </div>
+                <p class="arch-node-body">
+                  Dual-tier execution: in-memory <strong>wazero JIT</strong> (Lite Mode) or rootless <strong>crun/apptainer</strong> with GPU passthrough (Heavy Mode).
+                </p>
+                <div style="margin-top: 0.8rem; display: flex; gap: 0.4rem;">
+                  <span class="badge badge-cyan">Zero Admin</span>
+                  <span class="badge badge-violet">CUDA / ROCm</span>
+                  <span class="badge badge-emerald">90% Native</span>
+                </div>
+              </div>
+
+              <!-- Secondary Worker -->
+              <div class="arch-node" data-node="browser">
+                <div class="arch-node-header">
+                  <div class="arch-node-icon">🌐</div>
+                  <div>
+                    <div class="arch-node-title">Secondary Worker (Browser WASM)</div>
+                    <div class="arch-node-sub">nats.ws / Web Worker</div>
+                  </div>
+                </div>
+                <p class="arch-node-body">
+                  Zero-install fallback. Volunteers open a URL in Chrome/Firefox/Safari and execute compute tasks with sandboxed memory boundaries.
+                </p>
+                <div style="margin-top: 0.8rem; display: flex; gap: 0.4rem;">
+                  <span class="badge badge-cyan">Zero Install</span>
+                  <span class="badge badge-amber">Web Worker</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Detail Panel -->
+          <div class="arch-detail-panel">
+            <div class="arch-detail-text">
+              <strong id="arch-detail-title">Master Node (Orchestrator)</strong>:
+              <span id="arch-detail-desc">Dispatches NATS work queues, automates container image baking, cross-compiles WebAssembly, and validates results using 3-way consensus.</span>
+            </div>
+            <span class="badge badge-cyan" id="arch-detail-badge">Orchestration Engine</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Pillars / Innovation Grid -->
+    <section class="section" style="background: rgba(10, 15, 28, 0.4);">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">Key Innovations</span>
+          <h2 class="section-title">Built for Modern Hardware & Zero Friction</h2>
+          <p class="section-desc">
+            Solving the historic bottlenecks of volunteer distributed computing platforms.
+          </p>
+        </div>
+
+        <div class="grid-3">
+          <!-- Pillar 1 -->
+          <div class="feature-card">
+            <div class="feature-icon-wrap">🪟</div>
+            <h3 class="feature-title">The Windows "Holy Grail"</h3>
+            <p class="feature-desc">
+              Windows adoption usually dies on WSL2 or Docker Desktop setups. Speedboat compiles to a pure Go static binary (<code>agent.exe</code>) with zero external dependencies, no CGO, and no admin rights needed.
+            </p>
+          </div>
+
+          <!-- Pillar 2 -->
+          <div class="feature-card">
+            <div class="feature-icon-wrap">⚡</div>
+            <h3 class="feature-title">Silent In-Memory JIT</h3>
+            <p class="feature-desc">
+              Embedded <strong>wazero</strong> runtime compiles WebAssembly bytecode directly into native x86-64 and ARM64 machine instructions in memory, achieving 85–90% of native speed with complete software isolation.
+            </p>
+          </div>
+
+          <!-- Pillar 3 -->
+          <div class="feature-card">
+            <div class="feature-icon-wrap">🔬</div>
+            <h3 class="feature-title">The Standard Stream Contract</h3>
+            <p class="feature-desc">
+              Scientists write normal scientific code without distributed systems headaches: Generator (emits task JSON), Logic (calculates result JSON from stdin), and Reducer (aggregates verified batches).
+            </p>
+          </div>
+
+          <!-- Pillar 4 -->
+          <div class="feature-card">
+            <div class="feature-icon-wrap">🛡️</div>
+            <h3 class="feature-title">Zero-Trust Sandboxing</h3>
+            <p class="feature-desc">
+              Workloads run inside strict memory jails or rootless Linux namespaces. Faulty scientific code triggers runtime traps, killing the task instantly while leaving the volunteer's computer rock-solid.
+            </p>
+          </div>
+
+          <!-- Pillar 5 -->
+          <div class="feature-card">
+            <div class="feature-icon-wrap">⚖️</div>
+            <h3 class="feature-title">FP Determinism & Anti-Cheating</h3>
+            <p class="feature-desc">
+              Floating-point differences between architectures are resolved using epsilon-tolerance comparison and 3-way majority consensus. Spot-check trap tasks catch spoofers.
+            </p>
+          </div>
+
+          <!-- Pillar 6 -->
+          <div class="feature-card">
+            <div class="feature-icon-wrap">🎮</div>
+            <h3 class="feature-title">Gamified Pilot Telemetry</h3>
+            <p class="feature-desc">
+              Volunteer retention thrives on real-time feedback: dynamic FLOPS credit tickers, cockpit avionics HUDs, and 5-tier Pilot Rank badges from Cadet to Mach-10 Grand Architect.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Execution Matrix Section -->
+    <section class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">Runtime Comparison</span>
+          <h2 class="section-title">Speedboat Execution Matrix</h2>
+          <p class="section-desc">
+            How Browser WASM, Wazero Lite Mode, and Native Heavy Mode compare across key technical dimensions.
+          </p>
+        </div>
+
+        <div class="matrix-container">
+          <table class="matrix-table">
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th>Browser (WASM)</th>
+                <th>Lite Mode (wazero Agent)</th>
+                <th>Heavy Mode (crun / Apptainer)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="matrix-feature">Prerequisites</td>
+                <td>Any modern Web Browser</td>
+                <td><code>agent.exe</code> (Single 15MB binary)</td>
+                <td>Linux / Container runtime</td>
+              </tr>
+              <tr>
+                <td class="matrix-feature">Performance</td>
+                <td>~80% Native</td>
+                <td><span style="color: var(--wake-cyan); font-weight: 700;">~85–90% Native (JIT)</span></td>
+                <td><span style="color: var(--quantum-emerald); font-weight: 700;">100% Native + AVX-512</span></td>
+              </tr>
+              <tr>
+                <td class="matrix-feature">Hardware Acceleration</td>
+                <td>WebGPU (Targeted)</td>
+                <td>WASI-NN (Roadmap)</td>
+                <td><span class="badge badge-emerald">CUDA / ROCm / oneAPI</span></td>
+              </tr>
+              <tr>
+                <td class="matrix-feature">WASM Engine</td>
+                <td>Browser Web Worker</td>
+                <td>Embedded <code>wazero</code></td>
+                <td>N/A (OCI Container)</td>
+              </tr>
+              <tr>
+                <td class="matrix-feature">Sandboxing Isolation</td>
+                <td>Browser Process Jail</td>
+                <td>Software Memory Block Jail</td>
+                <td>Rootless Namespaces / Seccomp</td>
+              </tr>
+              <tr>
+                <td class="matrix-feature">Persistence</td>
+                <td>While tab is open</td>
+                <td>System tray / Background</td>
+                <td>Systemd Daemon / Background</td>
+              </tr>
+              <tr>
+                <td class="matrix-feature">Networking Protocol</td>
+                <td>WebSocket (<code>nats.ws</code>)</td>
+                <td>NATS TCP / WebSocket</td>
+                <td>NATS TCP (4222)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pilot Rank Gamification Ladder -->
+    <section class="section" style="background: rgba(10, 15, 28, 0.4);">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">Volunteer Recognition</span>
+          <h2 class="section-title">Pilot Rank Progression</h2>
+          <p class="section-desc">
+            Earn computational credits for scientific tasks verified through majority consensus.
+          </p>
+        </div>
+
+        <div class="ranks-grid">
+          <div class="rank-card">
+            <div class="rank-icon-wrap">⚡</div>
+            <div class="rank-title">Cadet Pilot</div>
+            <span class="rank-badge badge-cyan">0–4 Tasks</span>
+            <div class="rank-desc">Initial node onboarding and telemetry baseline established.</div>
+          </div>
+
+          <div class="rank-card">
+            <div class="rank-icon-wrap">🌊</div>
+            <div class="rank-title">Hydrofoil Specialist</div>
+            <span class="rank-badge badge-cyan">5–19 Tasks</span>
+            <div class="rank-desc">Proven laminar computational flow on the distributed grid.</div>
+          </div>
+
+          <div class="rank-card">
+            <div class="rank-icon-wrap">🚀</div>
+            <div class="rank-title">Supersonic Voyager</div>
+            <span class="rank-badge badge-violet">20–49 Tasks</span>
+            <div class="rank-desc">Consistent contribution across batch task distributions.</div>
+          </div>
+
+          <div class="rank-card">
+            <div class="rank-icon-wrap">🌌</div>
+            <div class="rank-title">Fleet Commander</div>
+            <span class="rank-badge badge-emerald">50–199 Tasks</span>
+            <div class="rank-desc">High-reliability compute node with flawless consensus verification.</div>
+          </div>
+
+          <div class="rank-card">
+            <div class="rank-icon-wrap">👑</div>
+            <div class="rank-title">Mach-10 Architect</div>
+            <span class="rank-badge badge-amber">200+ Tasks</span>
+            <div class="rank-desc">Elite hypergrid contributor powering major scientific discoveries.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ready to Deploy CTA Banner -->
+    <section class="section" style="text-align: center;">
+      <div class="container">
+        <div style="background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(168, 85, 247, 0.05)); border: 1px solid var(--card-border-hover); border-radius: var(--radius-xl); padding: 3.5rem 2rem; max-width: 900px; margin: 0 auto; backdrop-filter: blur(16px); box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+          <h2 style="font-size: 2.4rem; font-weight: 800; margin-bottom: 1rem;">Ready to Power the HyperGrid?</h2>
+          <p style="color: var(--text-secondary); max-width: 600px; margin: 0 auto 2rem; font-size: 1.1rem;">
+            Whether you are a scientist orchestrating distributed calculations or a volunteer donating spare CPU/GPU cycles, Speedboat gets you live in seconds.
+          </p>
+          <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+            <a href="master.html" class="btn btn-outline btn-lg">Orchestrate as Master</a>
+            <a href="volunteer.html#web" class="btn btn-solid-cyan btn-lg">Try In-Browser Compute</a>
+            <button class="btn btn-plasma btn-lg" data-open-download>Download Desktop Client</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Download Modal -->
+  <div class="modal-overlay" id="download-modal">
+    <div class="modal-card">
+      <button class="modal-close" aria-label="Close modal">✕</button>
+      <div style="display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.5rem;">
+        <span style="font-size: 1.8rem;">🚤</span>
+        <h3 style="font-size: 1.4rem; font-weight: 800;">Download Speedboat Agent</h3>
+      </div>
+      <p style="color: var(--text-secondary); font-size: 0.88rem;">
+        Single-binary volunteer client with zero external dependencies. Choose your platform:
+      </p>
+
+      <div class="download-options">
+        <a href="#download-windows" class="dl-item">
+          <span class="dl-tag">Recommended</span>
+          <span class="dl-os-icon">🪟</span>
+          <span class="dl-os-name">Windows</span>
+          <span class="dl-os-meta">agent.exe (15.2 MB)</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Direct Download</span>
+        </a>
+
+        <a href="#download-macos" class="dl-item">
+          <span class="dl-tag">Universal</span>
+          <span class="dl-os-icon">🍏</span>
+          <span class="dl-os-name">macOS</span>
+          <span class="dl-os-meta">Speedboat.dmg (18 MB)</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Apple & Intel</span>
+        </a>
+
+        <a href="#download-linux" class="dl-item">
+          <span class="dl-tag">AppImage</span>
+          <span class="dl-os-icon">🐧</span>
+          <span class="dl-os-name">Linux</span>
+          <span class="dl-os-meta">x86_64 / aarch64</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Static Binary</span>
+        </a>
+      </div>
+
+      <div style="background: rgba(7, 10, 18, 0.85); border: 1px solid var(--card-border); border-radius: var(--radius-md); padding: 0.85rem 1rem; font-size: 0.78rem; font-family: var(--font-mono); color: var(--text-muted);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+          <span style="color: var(--text-secondary); font-weight: 700;">SHA-256 Verification Placeholder</span>
+          <span class="badge badge-cyan" style="font-size: 0.65rem;">v1.0.0-PROD</span>
+        </div>
+        <div style="word-break: break-all; color: var(--wake-cyan);">
+          e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <svg class="brand-logo" viewBox="0 0 36 36" fill="none" style="width: 22px; height: 22px;">
+              <polygon points="18,3 9,23 18,19 27,23" fill="#1e293b" stroke="#00f0ff" stroke-width="1.4"/>
+              <polygon points="18,8 14,18 18,16 22,18" fill="#00f0ff"/>
+            </svg>
+            <span style="font-weight: 800; font-size: 1rem; color: #fff;">SPEEDBOAT</span>
+          </div>
+          <p class="footer-brand-desc">
+            Universal volunteer computing platform for the modern era. Ultra-fast WebAssembly runtimes, rootless containers, and zero-trust sandboxing.
+          </p>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Documentation</h4>
+          <ul class="footer-links">
+            <li><a href="master.html">Master Node Setup</a></li>
+            <li><a href="master.html#stream-contract">Stream Contract</a></li>
+            <li><a href="master.html#config-builder">Project Generator</a></li>
+            <li><a href="master.html#consensus">Consensus Logic</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Volunteers</h4>
+          <ul class="footer-links">
+            <li><a href="volunteer.html#desktop">Desktop GUI (Wails)</a></li>
+            <li><a href="volunteer.html#cli">Headless CLI Agent</a></li>
+            <li><a href="volunteer.html#web">Web Worker Compute</a></li>
+            <li><a href="#" data-open-download>Download agent.exe</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Community</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/StanaAndrei/speedboat" target="_blank" rel="noopener">GitHub Project</a></li>
+            <li><a href="https://nats.io" target="_blank" rel="noopener">NATS.io Backbone</a></li>
+            <li><a href="https://wazero.io" target="_blank" rel="noopener">wazero WASM Engine</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>&copy; 2026 Project Speedboat. Distributed under Apache 2.0 / MIT.</div>
+        <div style="display: flex; gap: 1rem;">
+          <span style="color: var(--quantum-emerald);">● Grid Online</span>
+          <span>Hydrofoil HyperGrid v2.4</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
 </body>
 </html>

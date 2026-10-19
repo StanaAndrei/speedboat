@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volunteer Hub | Project Speedboat</title>
+  <meta name="description" content="Participate in planetary volunteer computing with Speedboat: single-binary desktop agent, headless CLI for servers, or zero-install browser Web Workers.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><polygon points='18,3 9,23 18,19 27,23' fill='%2300f0ff'/></svg>">
+</head>
+<body>
+  <canvas id="wake-canvas"></canvas>
+
+  <!-- Topbar Navigation -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="index.html" class="brand">
+        <div class="brand-icon-wrap">
+          <svg class="brand-logo" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="thrusterGlow" x1="18" y1="26" x2="18" y2="34" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00f0ff" stop-opacity="0.8"/>
+                <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="hullGradient" x1="18" y1="3" x2="18" y2="24" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#1e293b"/>
+                <stop offset="1" stop-color="#0f172a"/>
+              </linearGradient>
+            </defs>
+            <path d="M14 26L18 34L22 26" stroke="url(#thrusterGlow)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M6 21L12 18M30 21L24 18" stroke="#00f0ff" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+            <polygon points="18,3 9,23 18,19 27,23" fill="url(#hullGradient)" stroke="#00f0ff" stroke-width="1.4" stroke-linejoin="round"/>
+            <polygon points="18,8 14,18 18,16 22,18" fill="#00f0ff" fill-opacity="0.85"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">SPEEDBOAT</span>
+          <div class="brand-sub">
+            <span class="live-dot"></span>
+            <span>VOLUNTEER PORTAL</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Desktop Nav -->
+      <ul class="nav-links">
+        <li class="nav-item">
+          <a href="index.html" class="nav-link">Home</a>
+        </li>
+        <li class="nav-item">
+          <a href="master.html" class="nav-link">Master Guide</a>
+        </li>
+        <li class="nav-item">
+          <a href="volunteer.html" class="nav-link active dropdown-trigger">Volunteer Hub</a>
+          <ul class="dropdown-menu">
+            <li class="dropdown-item">
+              <a href="volunteer.html#desktop">
+                <span class="dropdown-icon">💻</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Desktop Agent (GUI)</span>
+                  <span class="dropdown-desc">15MB single binary (agent.exe)</span>
+                </div>
+              </a>
+            </li>
+            <li class="dropdown-item">
+              <a href="volunteer.html#cli">
+                <span class="dropdown-icon">⌨️</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Headless CLI Worker</span>
+                  <span class="dropdown-desc">For Linux servers & cloud VMs</span>
+                </div>
+              </a>
+            </li>
+            <li class="dropdown-item">
+              <a href="volunteer.html#web">
+                <span class="dropdown-icon">🌐</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Web Worker (Zero-Install)</span>
+                  <span class="dropdown-desc">Instant compute inside browser</span>
+                </div>
+              </a>
+            </li>
+          </ul>
+        </li>
+        <li class="nav-item">
+          <a href="https://github.com/StanaAndrei/speedboat" target="_blank" rel="noopener" class="nav-link">
+            <span>GitHub</span>
+            <span style="font-size: 0.75rem; opacity: 0.6;">↗</span>
+          </a>
+        </li>
+      </ul>
+
+      <!-- Action Buttons -->
+      <div class="nav-actions">
+        <a href="volunteer.html#web" class="btn btn-cyan btn-sm">Instant Web Compute</a>
+        <button class="btn btn-solid-cyan btn-sm" data-open-download>Download Agent</button>
+        <button class="mobile-toggle" aria-label="Toggle menu">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Dropdown Menu -->
+  <div class="mobile-menu">
+    <a href="index.html">Home</a>
+    <a href="master.html">Master Node Guide</a>
+    <a href="volunteer.html#desktop">Volunteer: Desktop (agent.exe)</a>
+    <a href="volunteer.html#cli">Volunteer: Headless CLI</a>
+    <a href="volunteer.html#web">Volunteer: Zero-Install Web Worker</a>
+    <a href="https://github.com/StanaAndrei/speedboat" target="_blank">GitHub Repository ↗</a>
+  </div>
+
+  <main>
+    <!-- Volunteer Hero -->
+    <section class="hero" style="padding-bottom: 2rem;">
+      <div class="container">
+        <div class="hero-badge-wrap">
+          <div class="hero-pill">
+            <span class="radar-wrap">
+              <span class="status-dot active"></span>
+              <span class="radar-wave"></span>
+            </span>
+            <span>VOLUNTEER FLIGHT DECK</span>
+          </div>
+        </div>
+
+        <h1 class="hero-title">
+          Lend Your Idle Cycles.<br>
+          <span class="glow-cyan">Choose Your Compute Channel.</span>
+        </h1>
+
+        <p class="hero-sub">
+          Speedboat supports three distinct volunteer tiers: an ultra-light single-binary desktop GUI, a headless CLI for 24/7 server clusters, or zero-install browser Web Workers where volunteers simply open a project link to begin computing.
+        </p>
+
+        <!-- Sub-Navigation Tabs Bar -->
+        <div class="volunteer-tabs-nav">
+          <button class="v-tab-btn active" data-tab="desktop">
+            <span>💻</span>
+            <span>Desktop Agent</span>
+          </button>
+          <button class="v-tab-btn" data-tab="cli">
+            <span>⌨️</span>
+            <span>Headless CLI</span>
+          </button>
+          <button class="v-tab-btn" data-tab="web">
+            <span>🌐</span>
+            <span>Web Worker (Zero-Install)</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <div class="container">
+      <!-- ===================================================================
+           TAB 1: DESKTOP AGENT (agent.exe / Wails v3)
+           =================================================================== -->
+      <div class="volunteer-tab-pane active" id="pane-desktop">
+        <div class="section-header" style="text-align: left; margin-bottom: 2rem;">
+          <span class="section-tag">Primary Worker Option</span>
+          <h2 class="section-title">The Single-Binary Desktop Experience</h2>
+          <p class="section-desc">
+            Download a 15MB executable, run it with zero admin privileges, and instantly crunch scientific models with hardware acceleration.
+          </p>
+        </div>
+
+        <!-- The Windows Holy Grail Pitch -->
+        <div class="stat-card" style="margin-bottom: 2.5rem; border-color: rgba(0, 240, 255, 0.3);">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+            <div>
+              <span class="badge badge-cyan" style="margin-bottom: 0.5rem;">The Windows "Holy Grail"</span>
+              <h3 style="font-size: 1.4rem; font-weight: 800; color: #fff;">Zero Dependencies. No Admin Rights. Pure Static Go.</h3>
+              <p style="color: var(--text-secondary); max-width: 780px; margin-top: 0.5rem; font-size: 0.94rem;">
+                Traditional volunteer platforms like BOINC or Folding@home historically suffer from broken WSL2 configurations, Docker Desktop licensing hurdles, and intrusive driver installations. Speedboat’s Windows client (<code>agent.exe</code>) is compiled statically in pure Go:
+              </p>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 2rem; font-weight: 900; font-family: var(--font-mono); color: var(--wake-cyan);">~15 MB</span>
+              <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Single Binary Size</div>
+            </div>
+          </div>
+
+          <div class="grid-3" style="margin-top: 1.5rem;">
+            <div style="background: rgba(6, 9, 19, 0.6); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--card-border);">
+              <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem;">⚡ Silent In-Memory JIT</div>
+              <p style="font-size: 0.8rem; color: var(--text-muted);">
+                Embedded <code>wazero</code> runtime compiles WebAssembly directly to native x86-64 machine instructions in RAM. 85–90% native speed with zero disk overhead.
+              </p>
+            </div>
+
+            <div style="background: rgba(6, 9, 19, 0.6); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--card-border);">
+              <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem;">🛡️ Memory-Jail Security</div>
+              <p style="font-size: 0.8rem; color: var(--text-muted);">
+                Zero file-system access (cannot read your personal files or Registry) and zero network exfiltration capabilities.
+              </p>
+            </div>
+
+            <div style="background: rgba(6, 9, 19, 0.6); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--card-border);">
+              <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem;">🚀 Dual-Engine Switching</div>
+              <p style="font-size: 0.8rem; color: var(--text-muted);">
+                Runs in <strong>Lite Mode</strong> (WASM) by default, or flips to <strong>Heavy Mode</strong> (rootless container) if GPU/AVX-512 hardware acceleration is enabled.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Download Cards Cluster -->
+        <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">Official Desktop Client Releases</h3>
+        <div class="download-options" style="margin-bottom: 2.5rem;">
+          <div class="dl-item" style="border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.05);">
+            <span class="dl-tag">Windows 10 / 11</span>
+            <span class="dl-os-icon">🪟</span>
+            <span class="dl-os-name">agent.exe</span>
+            <span class="dl-os-meta">Portable 64-bit (15.2 MB)</span>
+            <a href="#download-windows-placeholder" class="btn btn-solid-cyan btn-sm" style="width: 100%; margin-top: 0.5rem;" onclick="alert('Placeholder Download: agent.exe (Release v1.0.0 will be published via GitHub Actions)')">
+              Download .exe
+            </a>
+            <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">No installer needed</span>
+          </div>
+
+          <div class="dl-item">
+            <span class="dl-tag">macOS Universal</span>
+            <span class="dl-os-icon">🍏</span>
+            <span class="dl-os-name">Speedboat.dmg</span>
+            <span class="dl-os-meta">Apple Silicon & Intel (18.1 MB)</span>
+            <a href="#download-macos-placeholder" class="btn btn-outline btn-sm" style="width: 100%; margin-top: 0.5rem;" onclick="alert('Placeholder Download: Speedboat.dmg (Universal binary)')">
+              Download .dmg
+            </a>
+            <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">Gatekeeper signed</span>
+          </div>
+
+          <div class="dl-item">
+            <span class="dl-tag">Linux x86_64</span>
+            <span class="dl-os-icon">🐧</span>
+            <span class="dl-os-name">speedboat.AppImage</span>
+            <span class="dl-os-meta">Glibc 2.31+ (16.4 MB)</span>
+            <a href="#download-linux-placeholder" class="btn btn-outline btn-sm" style="width: 100%; margin-top: 0.5rem;" onclick="alert('Placeholder Download: speedboat.AppImage')">
+              Download AppImage
+            </a>
+            <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">chmod +x & run</span>
+          </div>
+        </div>
+
+        <!-- Desktop GUI Cockpit Preview Mockup -->
+        <div class="compute-sandbox" style="margin-bottom: 3.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.8rem;">
+            <div>
+              <span class="badge badge-violet">Wails v3 Native UI Mockup</span>
+              <h3 style="font-size: 1.25rem; font-weight: 800; margin-top: 0.3rem;">Hydrofoil Telemetry Flight Deck</h3>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <span class="badge badge-emerald">● CONNECTED</span>
+              <span class="badge badge-cyan">LITE JIT MODE</span>
+            </div>
+          </div>
+
+          <!-- Mock Desktop Stats Grid -->
+          <div class="grid-4" style="margin-bottom: 1.5rem;">
+            <div class="stat-card" style="padding: 1rem;">
+              <div class="stat-title">Target Project</div>
+              <div class="stat-value highlight-cyan" style="font-size: 1.2rem;">prime-counter</div>
+            </div>
+            <div class="stat-card" style="padding: 1rem;">
+              <div class="stat-title">Tasks Crunching</div>
+              <div class="stat-value highlight-emerald" style="font-size: 1.2rem;">24 Verified</div>
+            </div>
+            <div class="stat-card" style="padding: 1rem;">
+              <div class="stat-title">Compute Credits</div>
+              <div class="stat-value highlight-violet" style="font-size: 1.2rem;">2,850 CR</div>
+            </div>
+            <div class="stat-card" style="padding: 1rem;">
+              <div class="stat-title">Pilot Rank</div>
+              <div class="stat-value highlight-amber" style="font-size: 1.1rem;">Voyager 🚀</div>
+            </div>
+          </div>
+
+          <!-- Mode Selector Showcase -->
+          <div style="background: rgba(7, 10, 18, 0.8); border: 1px solid var(--card-border); border-radius: var(--radius-lg); padding: 1.2rem;">
+            <div style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 0.8rem; font-family: var(--font-mono);">
+              Hardware Runtime Preference (Desktop Settings)
+            </div>
+            <div class="grid-2">
+              <div style="background: rgba(0, 240, 255, 0.08); border: 1px solid var(--wake-cyan); border-radius: var(--radius-md); padding: 1rem; cursor: pointer;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <strong style="color: var(--wake-cyan);">⚡ Lite Mode (wazero WASM)</strong>
+                  <span class="badge badge-cyan">Active</span>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.4rem;">
+                  In-memory software sandbox. Uses 0% external disk files and runs purely on CPU instructions.
+                </p>
+              </div>
+
+              <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: var(--radius-md); padding: 1rem; cursor: pointer; opacity: 0.7;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <strong style="color: #fff;">🚀 Heavy Mode (crun / Apptainer)</strong>
+                  <span class="badge badge-violet">GPU Ready</span>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.4rem;">
+                  Full hardware passthrough with NVIDIA CUDA and AVX-512 vector acceleration.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           TAB 2: HEADLESS CLI WORKER
+           =================================================================== -->
+      <div class="volunteer-tab-pane" id="pane-cli">
+        <div class="section-header" style="text-align: left; margin-bottom: 2rem;">
+          <span class="section-tag">Server & Cluster Option</span>
+          <h2 class="section-title">Headless CLI Agent for Servers & Rigs</h2>
+          <p class="section-desc">
+            Designed for 24/7 background execution on Linux home servers, Raspberry Pi clusters, and cloud spot instances.
+          </p>
+        </div>
+
+        <!-- Quick Install Snippet -->
+        <div style="margin-bottom: 2rem;">
+          <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.6rem;">One-Line Quick Installation</h3>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">bash</span>
+              <button class="copy-btn">📋 Copy Command</button>
+            </div>
+            <pre><code>curl -sSL https://get.speedboat.dev/install.sh | bash</code></pre>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">
+            Or install directly via Go toolchain: <code>go install github.com/stanaandrei/speedboat/cmd/agent@latest</code>
+          </p>
+        </div>
+
+        <!-- Interactive CLI Command Builder -->
+        <div class="compute-sandbox" style="margin-bottom: 2.5rem;">
+          <h3 style="font-size: 1.2rem; font-weight: 800; margin-bottom: 1rem;">Interactive CLI Command Builder</h3>
+          <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
+            Customize your worker connection parameters. The command updates in real time:
+          </p>
+
+          <div class="grid-4" style="margin-bottom: 1.2rem;">
+            <div class="form-group">
+              <label class="form-label">Project ID</label>
+              <input type="text" id="cli-project" class="form-control" value="prime-counter">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">NATS Server Endpoint</label>
+              <input type="text" id="cli-nats" class="form-control" value="nats://localhost:4222">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Runtime Engine</label>
+              <select id="cli-runtime" class="form-control">
+                <option value="auto" selected>auto (Detects Best Engine)</option>
+                <option value="wasm">wasm (wazero Memory Jail)</option>
+                <option value="docker">docker (Rootless OCI)</option>
+                <option value="apptainer">apptainer (HPC Cluster)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Idle Timeout (sec)</label>
+              <input type="number" id="cli-idle" class="form-control" value="30">
+            </div>
+          </div>
+
+          <div class="code-block-wrapper" style="margin: 0;">
+            <div class="code-header">
+              <span>Generated Terminal Command</span>
+              <button class="copy-btn" data-target="cli-command-output">📋 Copy Terminal Command</button>
+            </div>
+            <pre id="cli-command-output"></pre>
+          </div>
+        </div>
+
+        <!-- Systemd Background Service Template -->
+        <div style="margin-bottom: 3.5rem;">
+          <h3 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.6rem;">Run as Background Service (systemd)</h3>
+          <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Keep your volunteer agent active across reboots on Linux servers:
+          </p>
+
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span>/etc/systemd/system/speedboat.service</span>
+              <button class="copy-btn">📋 Copy Service Unit</button>
+            </div>
+            <pre><code>[Unit]
+Description=Speedboat Volunteer Compute Worker
+After=network.target
+
+[Service]
+Type=simple
+User=speedboat
+Restart=always
+RestartSec=5
+ExecStart=/usr/local/bin/speedboat-agent run --project-id prime-counter --nats-url nats://localhost:4222 --runtime auto
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           TAB 3: WEB WORKER (ZERO-INSTALL)
+           =================================================================== -->
+      <div class="volunteer-tab-pane" id="pane-web">
+        <div class="section-header" style="text-align: left; margin-bottom: 2rem;">
+          <span class="section-tag">Zero-Install Option</span>
+          <h2 class="section-title">Browser Web Worker: Zero Installation Required</h2>
+          <p class="section-desc">
+            No downloads, no executables, no setup. When a research team or master node shares a project link, volunteers simply open that URL in any modern browser—the tab immediately initializes the Web Worker and crunches tasks in the background with zero setup.
+          </p>
+        </div>
+
+        <!-- How It Works Feature Banner -->
+        <div class="grid-3" style="margin-bottom: 2.5rem;">
+          <div class="feature-card">
+            <div class="feature-icon-wrap">🌐</div>
+            <h3 class="feature-title">Pure In-Browser WASM</h3>
+            <p class="feature-desc">
+              Executes compiled scientific bytecode in a dedicated browser Web Worker, isolated entirely within standard WebAssembly sandbox constraints.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-wrap">⚡</div>
+            <h3 class="feature-title">nats.ws WebSocket Mesh</h3>
+            <p class="feature-desc">
+              Punches through restrictive corporate and university firewalls effortlessly using encrypted WebSockets to stream task JSON and report results.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-wrap">🎮</div>
+            <h3 class="feature-title">Live Gamified Credits</h3>
+            <p class="feature-desc">
+              Watch real mathematical tasks complete, earn FLOPS credits, and unlock Pilot Rank progression badges in real time.
+            </p>
+          </div>
+        </div>
+
+        <!-- Automated Video Demonstration Container -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+          <div>
+            <h3 style="font-size: 1.2rem; font-weight: 700; color: #fff;">
+              Simulated Video Preview: Opening a Project Compute Link
+            </h3>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.2rem;">
+              Demonstrating the automated workflow when a volunteer opens a shared project link in any browser tab.
+            </p>
+          </div>
+          <span class="badge badge-cyan" style="font-size: 0.72rem;">Automated Playback</span>
+        </div>
+
+        <div class="sim-video-frame">
+          <!-- Browser Top Chrome Bar -->
+          <div class="sim-browser-bar">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="term-dot red"></span>
+              <span class="term-dot yellow"></span>
+              <span class="term-dot green"></span>
+            </div>
+
+            <div class="sim-browser-address">
+              <span style="color: var(--quantum-emerald);">🔒</span>
+              <span style="color: var(--text-primary); font-weight: 600;">https://grid.speedboat.dev/p/prime-counter</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <span class="badge badge-emerald" id="sim-browser-status" style="font-size: 0.7rem; padding: 0.2rem 0.6rem;">
+                <span class="status-dot emerald"></span> <span>CONNECTED (nats.ws)</span>
+              </span>
+              <span class="sim-rec-badge">
+                <span class="sim-rec-dot"></span> LIVE DEMO
+              </span>
+            </div>
+          </div>
+
+          <!-- Video Body Content -->
+          <div class="sim-body-wrap">
+            <!-- Pilot Rank & Gamification Bar -->
+            <div class="gamification-hud">
+              <div style="display: flex; align-items: center; gap: 0.8rem;">
+                <span class="rank-icon-wrap" style="width: 44px; height: 44px; font-size: 1.3rem;" id="sim-rank-icon">⚡</span>
+                <div>
+                  <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-mono); font-weight: 700;">Pilot Rank</div>
+                  <div style="font-size: 1rem; font-weight: 800; color: var(--wake-cyan);" id="sim-rank-title">Cadet Pilot</div>
+                </div>
+              </div>
+
+              <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 0.3rem;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.72rem; font-family: var(--font-mono); color: var(--text-muted);">
+                  <span>Rank Progression</span>
+                  <span>Towards Next Tier</span>
+                </div>
+                <div class="progress-track">
+                  <div class="progress-fill" id="sim-progress"></div>
+                </div>
+              </div>
+
+              <div style="text-align: right;">
+                <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-mono); font-weight: 700;">Credits Earned</div>
+                <div style="font-size: 1.4rem; font-weight: 900; font-family: var(--font-mono); color: var(--quantum-emerald);">
+                  <span id="sim-credits">0</span> <span style="font-size: 0.75rem; color: var(--text-muted);">FLOPS-CR</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Telemetry Stats Counters -->
+            <div class="grid-4" style="margin-bottom: 1.5rem;">
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-title">Tasks Processed</span>
+                  <span class="stat-icon">⚡</span>
+                </div>
+                <div class="stat-value highlight-cyan" id="sim-tasks">0</div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-title">Compute Execution Time</span>
+                  <span class="stat-icon">⏱️</span>
+                </div>
+                <div class="stat-value highlight-emerald" id="sim-time">0 ms</div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-title">Task Latency</span>
+                  <span class="stat-icon">📈</span>
+                </div>
+                <div class="stat-value highlight-violet" id="sim-latency">0 ms</div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-title">Consensus Status</span>
+                  <span class="stat-icon">🛡️</span>
+                </div>
+                <div class="stat-value highlight-amber" style="font-size: 1.25rem;">100% Validated</div>
+              </div>
+            </div>
+
+            <!-- Live Cyber Telemetry Terminal HUD -->
+            <div class="terminal-hud">
+              <div class="terminal-header">
+                <div class="terminal-controls">
+                  <span class="term-dot red"></span>
+                  <span class="term-dot yellow"></span>
+                  <span class="term-dot green"></span>
+                  <span class="terminal-title">
+                    <span class="terminal-activity-led"></span>
+                    STREAMING TELEMETRY HUD // BROWSER WORKER
+                  </span>
+                </div>
+                <div class="terminal-actions">
+                  <span class="badge badge-cyan" style="font-size: 0.68rem;">AUTOPLAYING LOGS</span>
+                </div>
+              </div>
+              <div class="terminal-body" id="sim-terminal-body">
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Video Player Transport Bar -->
+          <div class="sim-transport-bar">
+            <div class="sim-transport-controls">
+              <button class="sim-btn-play" id="sim-play-btn" title="Pause Demo">⏸</button>
+              <button class="sim-btn-play" id="sim-restart-btn" title="Restart Demo" style="font-size: 0.95rem;">↺</button>
+            </div>
+
+            <div class="sim-timeline-wrap">
+              <div class="sim-timeline-track">
+                <div class="sim-timeline-fill" id="sim-timeline-fill"></div>
+              </div>
+              <span class="sim-time-text" id="sim-time-text">0:00 / 0:30</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="badge badge-cyan" style="font-size: 0.68rem;">VIDEO SIMULATION</span>
+              <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">🔁 LOOP ACTIVE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Celebration Toast for Rank Up -->
+  <div class="rank-toast" id="rank-toast">
+    <span style="font-size: 2rem;">🏆</span>
+    <div>
+      <div style="font-size: 0.76rem; text-transform: uppercase; font-family: var(--font-mono); color: var(--wake-cyan); font-weight: 700;">Rank Up Achieved!</div>
+      <div style="font-size: 1.1rem; font-weight: 800; color: #fff;" id="rank-toast-msg">Promoted to Hydrofoil Specialist!</div>
+    </div>
+  </div>
+
+  <!-- Download Modal -->
+  <div class="modal-overlay" id="download-modal">
+    <div class="modal-card">
+      <button class="modal-close" aria-label="Close modal">✕</button>
+      <div style="display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.5rem;">
+        <span style="font-size: 1.8rem;">🚤</span>
+        <h3 style="font-size: 1.4rem; font-weight: 800;">Download Speedboat Agent</h3>
+      </div>
+      <p style="color: var(--text-secondary); font-size: 0.88rem;">
+        Single-binary volunteer client with zero external dependencies. Choose your platform:
+      </p>
+
+      <div class="download-options">
+        <a href="#download-windows" class="dl-item">
+          <span class="dl-tag">Recommended</span>
+          <span class="dl-os-icon">🪟</span>
+          <span class="dl-os-name">Windows</span>
+          <span class="dl-os-meta">agent.exe (15.2 MB)</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Direct Download</span>
+        </a>
+
+        <a href="#download-macos" class="dl-item">
+          <span class="dl-tag">Universal</span>
+          <span class="dl-os-icon">🍏</span>
+          <span class="dl-os-name">macOS</span>
+          <span class="dl-os-meta">Speedboat.dmg (18 MB)</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Apple & Intel</span>
+        </a>
+
+        <a href="#download-linux" class="dl-item">
+          <span class="dl-tag">AppImage</span>
+          <span class="dl-os-icon">🐧</span>
+          <span class="dl-os-name">Linux</span>
+          <span class="dl-os-meta">x86_64 / aarch64</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Static Binary</span>
+        </a>
+      </div>
+
+      <div style="background: rgba(7, 10, 18, 0.85); border: 1px solid var(--card-border); border-radius: var(--radius-md); padding: 0.85rem 1rem; font-size: 0.78rem; font-family: var(--font-mono); color: var(--text-muted);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+          <span style="color: var(--text-secondary); font-weight: 700;">SHA-256 Verification Placeholder</span>
+          <span class="badge badge-cyan" style="font-size: 0.65rem;">v1.0.0-PROD</span>
+        </div>
+        <div style="word-break: break-all; color: var(--wake-cyan);">
+          e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <svg class="brand-logo" viewBox="0 0 36 36" fill="none" style="width: 22px; height: 22px;">
+              <polygon points="18,3 9,23 18,19 27,23" fill="#1e293b" stroke="#00f0ff" stroke-width="1.4"/>
+              <polygon points="18,8 14,18 18,16 22,18" fill="#00f0ff"/>
+            </svg>
+            <span style="font-weight: 800; font-size: 1rem; color: #fff;">SPEEDBOAT</span>
+          </div>
+          <p class="footer-brand-desc">
+            Universal volunteer computing platform for the modern era. Ultra-fast WebAssembly runtimes, rootless containers, and zero-trust sandboxing.
+          </p>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Documentation</h4>
+          <ul class="footer-links">
+            <li><a href="master.html">Master Node Setup</a></li>
+            <li><a href="master.html#stream-contract">Stream Contract</a></li>
+            <li><a href="master.html#config-playground">Project Generator</a></li>
+            <li><a href="master.html#consensus">Consensus Logic</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Volunteers</h4>
+          <ul class="footer-links">
+            <li><a href="volunteer.html#desktop">Desktop GUI (Wails)</a></li>
+            <li><a href="volunteer.html#cli">Headless CLI Agent</a></li>
+            <li><a href="volunteer.html#web">Web Worker Compute</a></li>
+            <li><a href="#" data-open-download>Download agent.exe</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Community</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/StanaAndrei/speedboat" target="_blank" rel="noopener">GitHub Project</a></li>
+            <li><a href="https://nats.io" target="_blank" rel="noopener">NATS.io Backbone</a></li>
+            <li><a href="https://wazero.io" target="_blank" rel="noopener">wazero WASM Engine</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>&copy; 2026 Project Speedboat. Distributed under Apache 2.0 / MIT.</div>
+        <div style="display: flex; gap: 1rem;">
+          <span style="color: var(--quantum-emerald);">● Grid Online</span>
+          <span>Hydrofoil HyperGrid v2.4</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+  <script src="assets/js/volunteer-demo.js"></script>
+</body>
+</html>

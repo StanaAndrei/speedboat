@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Master Orchestrator Guide | Speedboat Grid</title>
+  <meta name="description" content="Step-by-step setup instructions for scientists and master orchestrators running Project Speedboat volunteer computing grids.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><polygon points='18,3 9,23 18,19 27,23' fill='%2300f0ff'/></svg>">
+</head>
+<body>
+  <canvas id="wake-canvas"></canvas>
+
+  <!-- Topbar Navigation -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="index.html" class="brand">
+        <div class="brand-icon-wrap">
+          <svg class="brand-logo" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="thrusterGlow" x1="18" y1="26" x2="18" y2="34" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00f0ff" stop-opacity="0.8"/>
+                <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="hullGradient" x1="18" y1="3" x2="18" y2="24" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#1e293b"/>
+                <stop offset="1" stop-color="#0f172a"/>
+              </linearGradient>
+            </defs>
+            <path d="M14 26L18 34L22 26" stroke="url(#thrusterGlow)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M6 21L12 18M30 21L24 18" stroke="#00f0ff" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+            <polygon points="18,3 9,23 18,19 27,23" fill="url(#hullGradient)" stroke="#00f0ff" stroke-width="1.4" stroke-linejoin="round"/>
+            <polygon points="18,8 14,18 18,16 22,18" fill="#00f0ff" fill-opacity="0.85"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">SPEEDBOAT</span>
+          <div class="brand-sub">
+            <span class="live-dot"></span>
+            <span>MASTER ORCHESTRATOR</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Desktop Nav -->
+      <ul class="nav-links">
+        <li class="nav-item">
+          <a href="index.html" class="nav-link">Home</a>
+        </li>
+        <li class="nav-item">
+          <a href="master.html" class="nav-link active">Master Guide</a>
+        </li>
+        <li class="nav-item">
+          <a href="volunteer.html" class="nav-link dropdown-trigger">Volunteer Hub</a>
+          <ul class="dropdown-menu">
+            <li class="dropdown-item">
+              <a href="volunteer.html#desktop">
+                <span class="dropdown-icon">💻</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Desktop Agent (GUI)</span>
+                  <span class="dropdown-desc">15MB single binary (agent.exe)</span>
+                </div>
+              </a>
+            </li>
+            <li class="dropdown-item">
+              <a href="volunteer.html#cli">
+                <span class="dropdown-icon">⌨️</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Headless CLI Worker</span>
+                  <span class="dropdown-desc">For Linux servers & cloud VMs</span>
+                </div>
+              </a>
+            </li>
+            <li class="dropdown-item">
+              <a href="volunteer.html#web">
+                <span class="dropdown-icon">🌐</span>
+                <div class="dropdown-meta">
+                  <span class="dropdown-title">Web Worker (Zero-Install)</span>
+                  <span class="dropdown-desc">Instant compute inside browser</span>
+                </div>
+              </a>
+            </li>
+          </ul>
+        </li>
+        <li class="nav-item">
+          <a href="https://github.com/StanaAndrei/speedboat" target="_blank" rel="noopener" class="nav-link">
+            <span>GitHub</span>
+            <span style="font-size: 0.75rem; opacity: 0.6;">↗</span>
+          </a>
+        </li>
+      </ul>
+
+      <!-- Action Buttons -->
+      <div class="nav-actions">
+        <a href="volunteer.html#web" class="btn btn-cyan btn-sm">Instant Web Compute</a>
+        <button class="btn btn-solid-cyan btn-sm" data-open-download>Download Agent</button>
+        <button class="mobile-toggle" aria-label="Toggle menu">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Dropdown Menu -->
+  <div class="mobile-menu">
+    <a href="index.html">Home</a>
+    <a href="master.html">Master Node Guide</a>
+    <a href="volunteer.html#desktop">Volunteer: Desktop (agent.exe)</a>
+    <a href="volunteer.html#cli">Volunteer: Headless CLI</a>
+    <a href="volunteer.html#web">Volunteer: Zero-Install Web Worker</a>
+    <a href="https://github.com/StanaAndrei/speedboat" target="_blank">GitHub Repository ↗</a>
+  </div>
+
+  <main>
+    <!-- Header Hero -->
+    <section class="hero" style="padding-bottom: 2rem;">
+      <div class="container">
+        <div class="hero-badge-wrap">
+          <div class="hero-pill">
+            <span class="radar-wrap">
+              <span class="status-dot active"></span>
+              <span class="radar-wave"></span>
+            </span>
+            <span>SCIENTIST & ORCHESTRATOR MANUAL</span>
+          </div>
+        </div>
+
+        <h1 class="hero-title">
+          Master Node Orchestration:<br>
+          <span class="glow-cyan">From Math to Grid in 5 Minutes</span>
+        </h1>
+
+        <p class="hero-sub">
+          The Master Node coordinates real-time NATS work queues, automates container baking and WASM cross-compilation, dispatches redundant tasks, and enforces majority consensus.
+        </p>
+
+        <!-- Quick Jump Links -->
+        <div style="display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap;">
+          <a href="#prerequisites" class="badge badge-cyan" style="text-decoration: none; padding: 0.4rem 0.8rem;">1. Prerequisites</a>
+          <a href="#infrastructure" class="badge badge-cyan" style="text-decoration: none; padding: 0.4rem 0.8rem;">2. Infrastructure</a>
+          <a href="#stream-contract" class="badge badge-cyan" style="text-decoration: none; padding: 0.4rem 0.8rem;">3. Stream Contract</a>
+          <a href="#baking" class="badge badge-violet" style="text-decoration: none; padding: 0.4rem 0.8rem;">4. Auto-Baking</a>
+          <a href="#running-master" class="badge badge-emerald" style="text-decoration: none; padding: 0.4rem 0.8rem;">5. Launch Master</a>
+          <a href="#consensus" class="badge badge-amber" style="text-decoration: none; padding: 0.4rem 0.8rem;">6. Anti-Cheating</a>
+          <a href="#config-playground" class="badge badge-cyan" style="text-decoration: none; padding: 0.4rem 0.8rem;">⚡ Interactive Generator</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Master Architecture Walkthrough -->
+    <section class="section">
+      <div class="container">
+        <!-- Step 1: Prerequisites & Architecture -->
+        <div id="prerequisites" style="margin-bottom: 3.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span class="badge badge-cyan" style="font-size: 0.85rem; padding: 0.3rem 0.8rem;">Step 1</span>
+            <h2 style="font-size: 1.8rem; font-weight: 800;">Prerequisites & Environment</h2>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1.2rem;">
+            The Speedboat Master runs as an unprivileged binary orchestrating a high-throughput pipeline. Before launching, ensure your host has:
+          </p>
+          <div class="grid-3">
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-title">Go Toolchain</span>
+                <span class="stat-icon">🐹</span>
+              </div>
+              <div style="font-size: 1.1rem; font-weight: 700;">Go 1.22+</div>
+              <p style="font-size: 0.82rem; color: var(--text-muted);">Required to compile and run <code>cmd/master</code>.</p>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-title">Docker Engine</span>
+                <span class="stat-icon">🐳</span>
+              </div>
+              <div style="font-size: 1.1rem; font-weight: 700;">Docker 24.0+</div>
+              <p style="font-size: 0.82rem; color: var(--text-muted);">Used for backing services and optional OCI image baking.</p>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-title">Message Fabric</span>
+                <span class="stat-icon">⚡</span>
+              </div>
+              <div style="font-size: 1.1rem; font-weight: 700;">NATS JetStream</div>
+              <p style="font-size: 0.82rem; color: var(--text-muted);">Handles pub/sub work queues & WASM Object Store distribution.</p>
+            </div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Step 2: Infrastructure Deployment -->
+        <div id="infrastructure" style="margin-bottom: 3.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span class="badge badge-cyan" style="font-size: 0.85rem; padding: 0.3rem 0.8rem;">Step 2</span>
+            <h2 style="font-size: 1.8rem; font-weight: 800;">Deploying the Infrastructure</h2>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1.2rem;">
+            Speedboat uses NATS with JetStream enabled to distribute work packages and stream compiled WebAssembly binaries. We provide an out-of-the-box Compose file:
+          </p>
+
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span>examples/docker-compose.yaml</span>
+              <button class="copy-btn">📋 Copy YAML</button>
+            </div>
+            <pre><code><span class="cm-keyword">services</span>:
+  <span class="cm-func">nats</span>:
+    <span class="cm-keyword">image</span>: <span class="cm-string">nats:2.10-alpine</span>
+    <span class="cm-keyword">container_name</span>: <span class="cm-string">speedboat-nats</span>
+    <span class="cm-keyword">restart</span>: <span class="cm-string">unless-stopped</span>
+    <span class="cm-keyword">command</span>:
+      - <span class="cm-string">"-c"</span>
+      - <span class="cm-string">"/etc/nats/nats.conf"</span>
+    <span class="cm-keyword">ports</span>:
+      - <span class="cm-string">"4222:4222"</span>                <span class="cm-comment"># Native TCP client port (CLI & agent.exe)</span>
+      - <span class="cm-string">"8222:8222"</span>                <span class="cm-comment"># HTTP monitoring dashboard</span>
+      - <span class="cm-string">"8080:8080"</span>                <span class="cm-comment"># WebSocket port for browser nats.ws workers</span>
+    <span class="cm-keyword">volumes</span>:
+      - <span class="cm-string">nats_data:/data</span>
+      - <span class="cm-string">./nats.conf:/etc/nats/nats.conf:ro</span>
+
+  <span class="cm-func">registry</span>:
+    <span class="cm-keyword">image</span>: <span class="cm-string">registry:2</span>
+    <span class="cm-keyword">container_name</span>: <span class="cm-string">speedboat-registry</span>
+    <span class="cm-keyword">restart</span>: <span class="cm-string">unless-stopped</span>
+    <span class="cm-keyword">ports</span>:
+      - <span class="cm-string">"5000:5000"</span>                <span class="cm-comment"># Local Docker registry for Heavy Mode OCI containers</span>
+    <span class="cm-keyword">environment</span>:
+      <span class="cm-keyword">REGISTRY_STORAGE_DELETE_ENABLED</span>: <span class="cm-string">"true"</span>
+
+<span class="cm-keyword">volumes</span>:
+  <span class="cm-func">nats_data</span>:
+  <span class="cm-func">registry_data</span>:</code></pre>
+          </div>
+
+          <p style="color: var(--text-secondary); margin-top: 0.8rem;">
+            Start the backing cluster with one shell command:
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">bash</span>
+              <button class="copy-btn">📋 Copy Command</button>
+            </div>
+            <pre><code>docker compose -f examples/docker-compose.yaml up -d</code></pre>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Step 3: The Standard Stream Contract -->
+        <div id="stream-contract" style="margin-bottom: 3.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span class="badge badge-cyan" style="font-size: 0.85rem; padding: 0.3rem 0.8rem;">Step 3</span>
+            <h2 style="font-size: 1.8rem; font-weight: 800;">The Standard Stream Contract (Math-to-Grid)</h2>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1.2rem;">
+            Scientists never need to master distributed concurrency or network protocols. Speedboat defines a clean Unix-pipeline contract:
+          </p>
+
+          <div class="grid-3" style="margin-bottom: 1.5rem;">
+            <div class="feature-card">
+              <div class="badge badge-cyan" style="width: fit-content;">Phase A: Splitter</div>
+              <h3 style="font-size: 1.1rem; font-weight: 700;">generator.py</h3>
+              <p class="feature-desc">
+                Emits a JSON array of task specifications to <code>stdout</code>. The Master slices these into NATS work items.
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <div class="badge badge-violet" style="width: fit-content;">Phase B: Worker</div>
+              <h3 style="font-size: 1.1rem; font-weight: 700;">logic.cpp / logic.wasm</h3>
+              <p class="feature-desc">
+                Reads one task JSON from <code>stdin</code>, crunches the simulation, and prints the result JSON to <code>stdout</code>.
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <div class="badge badge-emerald" style="width: fit-content;">Phase C: Aggregator</div>
+              <h3 style="font-size: 1.1rem; font-weight: 700;">reducer.py</h3>
+              <p class="feature-desc">
+                Reads consensus-verified result batches from <code>stdin</code> and writes the final aggregated research dataset.
+              </p>
+            </div>
+          </div>
+
+          <!-- Code Example: Generator -->
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span>examples/prime-cnt/generator.py</span>
+              <button class="copy-btn">📋 Copy Generator</button>
+            </div>
+            <pre><code><span class="cm-keyword">import</span> json
+<span class="cm-keyword">import</span> sys
+
+<span class="cm-comment"># Slices search space [10,000,000 -> 100,000,000] into 1,000 sub-tasks</span>
+tasks = []
+step = 100000
+<span class="cm-keyword">for</span> idx, start <span class="cm-keyword">in</span> enumerate(range(10000000, 20000000, step)):
+    tasks.append({
+        <span class="cm-string">"task_id"</span>: idx,
+        <span class="cm-string">"start"</span>: start,
+        <span class="cm-string">"end"</span>: start + step
+    })
+
+<span class="cm-comment"># Write JSON stream to stdout</span>
+print(json.dumps(tasks))
+sys.stdout.flush()</code></pre>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Step 4: Auto-Baking WASM & Containers -->
+        <div id="baking" style="margin-bottom: 3.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span class="badge badge-violet" style="font-size: 0.85rem; padding: 0.3rem 0.8rem;">Step 4</span>
+            <h2 style="font-size: 1.8rem; font-weight: 800;">Baking Scientific Payloads</h2>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1.2rem;">
+            Speedboat provides automated baking routines for both lightweight WebAssembly and native OCI containers:
+          </p>
+
+          <div class="grid-2">
+            <!-- WASM Direct -->
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-title">Target: Lite Mode & Browser</span>
+                <span class="badge badge-cyan">WASI WebAssembly</span>
+              </div>
+              <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 0.8rem 0;">
+                Compiles your C++/Rust/C source file directly into an optimized <code>.wasm</code> bytecode file using ephemeral <code>wasi-sdk</code>:
+              </p>
+              <div class="code-block-wrapper" style="margin: 0;">
+                <pre><code>go run ./cmd/master build-wasm -p ./examples/prime-cnt</code></pre>
+              </div>
+              <ul style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.8rem; padding-left: 1.2rem;">
+                <li>Tiny artifact size: 1 MB – 15 MB</li>
+                <li>Zero external dependency runtime via <code>wazero</code></li>
+                <li>85–90% native speed via in-memory JIT</li>
+              </ul>
+            </div>
+
+            <!-- Heavy OCI -->
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-title">Target: Heavy Compute</span>
+                <span class="badge badge-plasma">OCI / Docker Image</span>
+              </div>
+              <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 0.8rem 0;">
+                Bakes and tags an unprivileged container image and pushes it to the local registry for GPU passthrough:
+              </p>
+              <div class="code-block-wrapper" style="margin: 0;">
+                <pre><code>go run ./cmd/master build -p ./examples/prime-cnt</code></pre>
+              </div>
+              <ul style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.8rem; padding-left: 1.2rem;">
+                <li>Full hardware acceleration (CUDA, ROCm, AVX-512)</li>
+                <li>Ideal for legacy Fortran & dynamic C++ libraries</li>
+                <li>100% native CPU and GPU performance</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Step 5: Launching Master Orchestrator -->
+        <div id="running-master" style="margin-bottom: 3.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span class="badge badge-emerald" style="font-size: 0.85rem; padding: 0.3rem 0.8rem;">Step 5</span>
+            <h2 style="font-size: 1.8rem; font-weight: 800;">Launching the Master Grid</h2>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1.2rem;">
+            Run the master orchestrator to load tasks, publish work streams to NATS, and host the live browser dashboard:
+          </p>
+
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">bash</span>
+              <button class="copy-btn">📋 Copy Command</button>
+            </div>
+            <pre><code>go run ./cmd/master run \
+  --project-dir ./examples/prime-cnt \
+  --nats-url nats://localhost:4222 \
+  --registry localhost:5000 \
+  --web-port 3000 \
+  --wasm ./examples/prime-cnt/logic.wasm</code></pre>
+          </div>
+
+          <div style="margin-top: 1.5rem; background: rgba(14, 21, 37, 0.7); border: 1px solid var(--card-border); border-radius: var(--radius-md); padding: 1.2rem;">
+            <h4 style="font-size: 0.92rem; font-weight: 700; color: var(--text-bright-cyan); margin-bottom: 0.5rem;">Orchestrator CLI Flags Reference</h4>
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; font-size: 0.82rem; font-family: var(--font-mono); border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                  <td style="padding: 0.4rem 0; color: var(--wake-cyan);">--project-dir, -p</td>
+                  <td style="color: var(--text-secondary);">Path to project folder containing <code>project.yaml</code> (default: <code>.</code>)</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                  <td style="padding: 0.4rem 0; color: var(--wake-cyan);">--nats-url</td>
+                  <td style="color: var(--text-secondary);">NATS server endpoint (default: <code>nats://localhost:4222</code>)</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                  <td style="padding: 0.4rem 0; color: var(--wake-cyan);">--wasm</td>
+                  <td style="color: var(--text-secondary);">Path to compiled <code>.wasm</code> file to serve to browser volunteers</td>
+                </tr>
+                <tr>
+                  <td style="padding: 0.4rem 0; color: var(--wake-cyan);">--web-port</td>
+                  <td style="color: var(--text-secondary);">HTTP port to host the live volunteer web dashboard (default: <code>3000</code>)</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Step 6: Consensus & Anti-Cheating -->
+        <div id="consensus" style="margin-bottom: 3.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span class="badge badge-amber" style="font-size: 0.85rem; padding: 0.3rem 0.8rem;">Step 6</span>
+            <h2 style="font-size: 1.8rem; font-weight: 800;">Consensus Verification & Anti-Cheating</h2>
+          </div>
+          <p style="color: var(--text-secondary); margin-bottom: 1.2rem;">
+            Volunteer nodes are unauthenticated and untrusted. The Speedboat Master enforces strict mathematical consensus before feeding results into the research dataset:
+          </p>
+
+          <div class="grid-3">
+            <div class="feature-card">
+              <div class="feature-icon-wrap">⚖️</div>
+              <h3 class="feature-title">Redundancy Dispatch</h3>
+              <p class="feature-desc">
+                Every task payload is assigned to 3 separate volunteer nodes across different IP addresses to prevent collusion.
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon-wrap">🎯</div>
+              <h3 class="feature-title">Epsilon Consensus</h3>
+              <p class="feature-desc">
+                2 out of 3 results must agree. Floating-point variations across x86-64, ARM, and WASM software floats are verified within defined epsilon bounds (<code>1e-7</code>).
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon-wrap">🚨</div>
+              <h3 class="feature-title">Spot-Checking Trap Tasks</h3>
+              <p class="feature-desc">
+                The Master periodically dispatches deterministic verification tasks with pre-computed outputs to detect and ban bad actors.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Step 7: Interactive Config Builder Playground -->
+        <div id="config-playground">
+          <div class="section-header" style="text-align: left; margin-bottom: 2rem;">
+            <span class="section-tag">Interactive Scientist Playground</span>
+            <h2 class="section-title">Configure Your Research Pipeline</h2>
+            <p class="section-desc">
+              Select your scientific programming language and deployment target. The interactive generator produces your production-ready <code>project.yaml</code> and starter logic code.
+            </p>
+          </div>
+
+          <div class="compute-sandbox">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+              <div class="form-group">
+                <label class="form-label">Scientific Language</label>
+                <select id="cfg-lang" class="form-control">
+                  <option value="cpp" selected>C++ (High-Performance)</option>
+                  <option value="rust">Rust (Memory-Safe)</option>
+                  <option value="python">Python (Data Science)</option>
+                  <option value="fortran">Fortran (Legacy Numerics)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Project Name</label>
+                <input type="text" id="cfg-name" class="form-control" value="prime-counter">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Compute Target</label>
+                <select id="cfg-target" class="form-control">
+                  <option value="wasm" selected>Direct WASI (.wasm Bytecode)</option>
+                  <option value="docker">Docker / OCI Container</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Redundancy Verification</label>
+                <select id="cfg-redundancy" class="form-control">
+                  <option value="3" selected>3 Workers (2/3 Majority)</option>
+                  <option value="5">5 Workers (3/5 Majority)</option>
+                  <option value="1">1 Worker (Unverified / Fast)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div>
+                <div class="code-block-wrapper" style="margin: 0;">
+                  <div class="code-header">
+                    <span>Generated: project.yaml</span>
+                    <button class="copy-btn" data-target="code-project-yaml">📋 Copy YAML</button>
+                  </div>
+                  <pre id="code-project-yaml"></pre>
+                </div>
+              </div>
+
+              <div>
+                <div class="code-block-wrapper" style="margin: 0;">
+                  <div class="code-header">
+                    <span id="logic-file-title">Generated: logic.cpp</span>
+                    <button class="copy-btn" data-target="code-logic-file">📋 Copy Source</button>
+                  </div>
+                  <pre id="code-logic-file"></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Download Modal -->
+  <div class="modal-overlay" id="download-modal">
+    <div class="modal-card">
+      <button class="modal-close" aria-label="Close modal">✕</button>
+      <div style="display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.5rem;">
+        <span style="font-size: 1.8rem;">🚤</span>
+        <h3 style="font-size: 1.4rem; font-weight: 800;">Download Speedboat Agent</h3>
+      </div>
+      <p style="color: var(--text-secondary); font-size: 0.88rem;">
+        Single-binary volunteer client with zero external dependencies. Choose your platform:
+      </p>
+
+      <div class="download-options">
+        <a href="#download-windows" class="dl-item">
+          <span class="dl-tag">Recommended</span>
+          <span class="dl-os-icon">🪟</span>
+          <span class="dl-os-name">Windows</span>
+          <span class="dl-os-meta">agent.exe (15.2 MB)</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Direct Download</span>
+        </a>
+
+        <a href="#download-macos" class="dl-item">
+          <span class="dl-tag">Universal</span>
+          <span class="dl-os-icon">🍏</span>
+          <span class="dl-os-name">macOS</span>
+          <span class="dl-os-meta">Speedboat.dmg (18 MB)</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Apple & Intel</span>
+        </a>
+
+        <a href="#download-linux" class="dl-item">
+          <span class="dl-tag">AppImage</span>
+          <span class="dl-os-icon">🐧</span>
+          <span class="dl-os-name">Linux</span>
+          <span class="dl-os-meta">x86_64 / aarch64</span>
+          <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Static Binary</span>
+        </a>
+      </div>
+
+      <div style="background: rgba(7, 10, 18, 0.85); border: 1px solid var(--card-border); border-radius: var(--radius-md); padding: 0.85rem 1rem; font-size: 0.78rem; font-family: var(--font-mono); color: var(--text-muted);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+          <span style="color: var(--text-secondary); font-weight: 700;">SHA-256 Verification Placeholder</span>
+          <span class="badge badge-cyan" style="font-size: 0.65rem;">v1.0.0-PROD</span>
+        </div>
+        <div style="word-break: break-all; color: var(--wake-cyan);">
+          e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <svg class="brand-logo" viewBox="0 0 36 36" fill="none" style="width: 22px; height: 22px;">
+              <polygon points="18,3 9,23 18,19 27,23" fill="#1e293b" stroke="#00f0ff" stroke-width="1.4"/>
+              <polygon points="18,8 14,18 18,16 22,18" fill="#00f0ff"/>
+            </svg>
+            <span style="font-weight: 800; font-size: 1rem; color: #fff;">SPEEDBOAT</span>
+          </div>
+          <p class="footer-brand-desc">
+            Universal volunteer computing platform for the modern era. Ultra-fast WebAssembly runtimes, rootless containers, and zero-trust sandboxing.
+          </p>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Documentation</h4>
+          <ul class="footer-links">
+            <li><a href="master.html">Master Node Setup</a></li>
+            <li><a href="master.html#stream-contract">Stream Contract</a></li>
+            <li><a href="master.html#config-playground">Project Generator</a></li>
+            <li><a href="master.html#consensus">Consensus Logic</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Volunteers</h4>
+          <ul class="footer-links">
+            <li><a href="volunteer.html#desktop">Desktop GUI (Wails)</a></li>
+            <li><a href="volunteer.html#cli">Headless CLI Agent</a></li>
+            <li><a href="volunteer.html#web">Web Worker Compute</a></li>
+            <li><a href="#" data-open-download>Download agent.exe</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Community</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/StanaAndrei/speedboat" target="_blank" rel="noopener">GitHub Project</a></li>
+            <li><a href="https://nats.io" target="_blank" rel="noopener">NATS.io Backbone</a></li>
+            <li><a href="https://wazero.io" target="_blank" rel="noopener">wazero WASM Engine</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>&copy; 2026 Project Speedboat. Distributed under Apache 2.0 / MIT.</div>
+        <div style="display: flex; gap: 1rem;">
+          <span style="color: var(--quantum-emerald);">● Grid Online</span>
+          <span>Hydrofoil HyperGrid v2.4</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+  <script src="assets/js/master-tools.js"></script>
+</body>
+</html>
