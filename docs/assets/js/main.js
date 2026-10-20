@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initDownloadModal();
   initArchitectureExplorer();
   initOSDetection();
+  initReleaseVersionBadge();
 });
 
 /**
@@ -404,15 +405,15 @@ function initOSDetection() {
   osItems.forEach(item => {
     const itemOS = item.getAttribute('data-os');
     const isMatch = itemOS === detectedOS;
-    const btn = item.querySelector('.btn');
+    const btns = item.querySelectorAll('.btn');
     const tag = item.querySelector('.dl-tag');
 
     if (isMatch) {
       item.classList.add('detected-os');
-      if (btn) {
+      btns.forEach(btn => {
         btn.classList.remove('btn-outline');
         btn.classList.add('btn-solid-cyan');
-      }
+      });
       if (tag) {
         if (!tag.getAttribute('data-original-text')) {
           tag.setAttribute('data-original-text', tag.textContent.trim());
@@ -424,10 +425,10 @@ function initOSDetection() {
       }
     } else {
       item.classList.remove('detected-os');
-      if (btn) {
+      btns.forEach(btn => {
         btn.classList.remove('btn-solid-cyan');
         btn.classList.add('btn-outline');
-      }
+      });
       if (tag && tag.getAttribute('data-original-text')) {
         tag.textContent = tag.getAttribute('data-original-text');
       }
@@ -435,9 +436,38 @@ function initOSDetection() {
   });
 }
 
+/**
+ * Dynamic Release Tag Fetcher
+ * Reads latest release from GitHub API and updates data-release-version placeholders
+ */
+function initReleaseVersionBadge() {
+  const versionTags = document.querySelectorAll('[data-release-version]');
+  if (!versionTags.length) return;
+
+  fetch('https://api.github.com/repos/StanaAndrei/speedboat/releases/latest')
+    .then(res => {
+      if (!res.ok) throw new Error('Release query returned non-200');
+      return res.json();
+    })
+    .then(data => {
+      if (data && data.tag_name) {
+        versionTags.forEach(el => {
+          el.textContent = data.tag_name;
+        });
+      }
+    })
+    .catch(() => {
+      // Graceful fallback to initial static text
+    });
+}
+
 // Immediate run in case DOM is already ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initOSDetection);
+  document.addEventListener('DOMContentLoaded', () => {
+    initOSDetection();
+    initReleaseVersionBadge();
+  });
 } else {
   initOSDetection();
+  initReleaseVersionBadge();
 }

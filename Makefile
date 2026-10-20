@@ -9,7 +9,7 @@ else
   WAILS_TAGS :=
 endif
 
-.PHONY: build build-master-cli build-agent-cli build-gui build-mac build-linux build-win clean compose-up compose-down test test-cluster test-cluster-2-agents test-cluster-3-agents test-master-only test-cluster-manual test-prime-cnt-cluster test-clean boot-agent add-agent add-agents list-agents stop-agents
+.PHONY: build build-master-cli build-agent-cli build-gui build-mac build-linux build-win package-linux clean compose-up compose-down test test-cluster test-cluster-2-agents test-cluster-3-agents test-master-only test-cluster-manual test-prime-cnt-cluster test-clean boot-agent add-agent add-agents list-agents stop-agents
 
 build: build-master-cli build-agent-cli build-gui
 
@@ -51,6 +51,9 @@ build-linux:
 	cd gui && wails build -tags webkit2_41 -o speedboat-gui
 	@mkdir -p build
 	@cp gui/build/bin/speedboat-gui build/speedboat-gui
+
+package-linux:
+	./scripts/package_linux.sh $(or $(VERSION),1.0.0)
 
 build-win:
 	cd gui && wails build -platform windows/amd64 -o speedboat_win.exe
