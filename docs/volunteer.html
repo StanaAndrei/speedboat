@@ -205,18 +205,18 @@
         <!-- Download Cards Cluster -->
         <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">Official Desktop Client Releases</h3>
         <div class="download-options" style="margin-bottom: 2.5rem;">
-          <div class="dl-item" style="border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.05);">
+          <div class="dl-item" data-os="windows">
             <span class="dl-tag">Windows 10 / 11</span>
             <span class="dl-os-icon">🪟</span>
             <span class="dl-os-name">agent.exe</span>
             <span class="dl-os-meta">Portable 64-bit (15.2 MB)</span>
-            <a href="#download-windows-placeholder" class="btn btn-solid-cyan btn-sm" style="width: 100%; margin-top: 0.5rem;" onclick="alert('Placeholder Download: agent.exe (Release v1.0.0 will be published via GitHub Actions)')">
+            <a href="#download-windows-placeholder" class="btn btn-outline btn-sm" style="width: 100%; margin-top: 0.5rem;" onclick="alert('Placeholder Download: agent.exe (Release v1.0.0 will be published via GitHub Actions)')">
               Download .exe
             </a>
             <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">No installer needed</span>
           </div>
 
-          <div class="dl-item">
+          <div class="dl-item" data-os="mac">
             <span class="dl-tag">macOS Universal</span>
             <span class="dl-os-icon">🍏</span>
             <span class="dl-os-name">Speedboat.dmg</span>
@@ -227,7 +227,7 @@
             <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">Gatekeeper signed</span>
           </div>
 
-          <div class="dl-item">
+          <div class="dl-item" data-os="linux">
             <span class="dl-tag">Linux x86_64</span>
             <span class="dl-os-icon">🐧</span>
             <span class="dl-os-name">speedboat.AppImage</span>
@@ -609,23 +609,23 @@ WantedBy=multi-user.target</code></pre>
       </p>
 
       <div class="download-options">
-        <a href="#download-windows" class="dl-item">
-          <span class="dl-tag">Recommended</span>
+        <a href="#download-windows" class="dl-item" data-os="windows">
+          <span class="dl-tag">Windows 10 / 11</span>
           <span class="dl-os-icon">🪟</span>
           <span class="dl-os-name">Windows</span>
           <span class="dl-os-meta">agent.exe (15.2 MB)</span>
           <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Direct Download</span>
         </a>
 
-        <a href="#download-macos" class="dl-item">
-          <span class="dl-tag">Universal</span>
+        <a href="#download-macos" class="dl-item" data-os="mac">
+          <span class="dl-tag">macOS Universal</span>
           <span class="dl-os-icon">🍏</span>
           <span class="dl-os-name">macOS</span>
           <span class="dl-os-meta">Speedboat.dmg (18 MB)</span>
           <span style="font-size: 0.72rem; color: var(--wake-cyan); font-weight: 600;">Apple & Intel</span>
         </a>
 
-        <a href="#download-linux" class="dl-item">
+        <a href="#download-linux" class="dl-item" data-os="linux">
           <span class="dl-tag">AppImage</span>
           <span class="dl-os-icon">🐧</span>
           <span class="dl-os-name">Linux</span>

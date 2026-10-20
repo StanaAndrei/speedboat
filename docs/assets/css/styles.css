@@ -1751,6 +1751,20 @@ body {
   box-shadow: 0 0 20px var(--wake-cyan-glow);
 }
 
+.dl-item.detected-os {
+  border-color: rgba(0, 240, 255, 0.45) !important;
+  background: rgba(0, 240, 255, 0.06) !important;
+  box-shadow: 0 0 24px var(--wake-cyan-glow) !important;
+  transform: translateY(-2px);
+}
+
+.dl-item.detected-os .dl-tag {
+  background: rgba(0, 240, 255, 0.25);
+  border: 1px solid rgba(0, 240, 255, 0.6);
+  color: var(--wake-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+}
+
 .dl-os-icon {
   font-size: 2.2rem;
 }

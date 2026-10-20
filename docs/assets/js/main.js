@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCopyButtons();
   initDownloadModal();
   initArchitectureExplorer();
+  initOSDetection();
 });
 
 /**
@@ -378,4 +379,65 @@ function initArchitectureExplorer() {
       }
     });
   });
+}
+
+/**
+ * Dynamic Operating System Detection & Highlighting
+ * Highlights client release cards and download modal options matching the visitor's OS
+ */
+function initOSDetection() {
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const platform = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+
+  let detectedOS = 'linux'; // Default to linux if detection is ambiguous or on Linux
+  if (platform.includes('win') || ua.includes('windows') || ua.includes('win64') || ua.includes('win32')) {
+    detectedOS = 'windows';
+  } else if (platform.includes('mac') || ua.includes('macintosh') || ua.includes('mac os x') || ua.includes('darwin')) {
+    detectedOS = 'mac';
+  } else if (platform.includes('linux') || ua.includes('linux') || ua.includes('x11')) {
+    detectedOS = 'linux';
+  }
+
+  const osItems = document.querySelectorAll('[data-os]');
+  if (!osItems.length) return;
+
+  osItems.forEach(item => {
+    const itemOS = item.getAttribute('data-os');
+    const isMatch = itemOS === detectedOS;
+    const btn = item.querySelector('.btn');
+    const tag = item.querySelector('.dl-tag');
+
+    if (isMatch) {
+      item.classList.add('detected-os');
+      if (btn) {
+        btn.classList.remove('btn-outline');
+        btn.classList.add('btn-solid-cyan');
+      }
+      if (tag) {
+        if (!tag.getAttribute('data-original-text')) {
+          tag.setAttribute('data-original-text', tag.textContent.trim());
+        }
+        const orig = tag.getAttribute('data-original-text');
+        if (!orig.includes('(Your OS)')) {
+          tag.textContent = `${orig} (Your OS)`;
+        }
+      }
+    } else {
+      item.classList.remove('detected-os');
+      if (btn) {
+        btn.classList.remove('btn-solid-cyan');
+        btn.classList.add('btn-outline');
+      }
+      if (tag && tag.getAttribute('data-original-text')) {
+        tag.textContent = tag.getAttribute('data-original-text');
+      }
+    }
+  });
+}
+
+// Immediate run in case DOM is already ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initOSDetection);
+} else {
+  initOSDetection();
 }
