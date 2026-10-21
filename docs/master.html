@@ -168,14 +168,24 @@
                   ⬇ Download Binary
                 </a>
                 <a href="https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-master-linux-amd64.tar.gz" class="btn btn-outline btn-sm">
-                  Download .tar.gz
+                  Download .tar.gz (with Compose)
                 </a>
+              </div>
+            </div>
+
+            <!-- Docker & Compose Prerequisites Callout -->
+            <div style="background: rgba(0, 240, 255, 0.05); border-left: 3px solid var(--wake-cyan); padding: 0.85rem 1rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin-bottom: 1.2rem; font-size: 0.88rem; color: var(--text-secondary);">
+              <div style="font-weight: 700; color: #fff; margin-bottom: 0.25rem;">
+                🐳 Docker &amp; Docker Compose Required
+              </div>
+              <div>
+                To orchestrate tasks and host the message fabric, <a href="https://www.docker.com/" target="_blank" rel="noopener" style="color: var(--wake-cyan); text-decoration: underline;">Docker</a> is required on the host system. The master also requires the infrastructure definition from <a href="https://github.com/StanaAndrei/speedboat/blob/main/examples/docker-compose.yaml" target="_blank" rel="noopener" style="color: var(--wake-cyan); text-decoration: underline;">examples/docker-compose.yaml</a> to spin up NATS JetStream and the local container registry. The <a href="https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-master-linux-amd64.tar.gz" style="color: var(--quantum-emerald); font-weight: 600;">.tar.gz release bundle</a> packages the <code>speedboat-master</code> binary together with this <code>docker-compose.yaml</code> ready to run.
               </div>
             </div>
 
             <div class="code-block-wrapper" style="margin: 0;">
               <div class="code-header">
-                <span class="code-lang-tag">bash (one-liner curl)</span>
+                <span class="code-lang-tag">bash (download binary via curl)</span>
                 <button class="copy-btn">📋 Copy Command</button>
               </div>
               <pre><code>curl -sSL -o speedboat-master https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-master && chmod +x speedboat-master</code></pre>

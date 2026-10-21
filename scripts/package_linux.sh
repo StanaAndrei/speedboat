@@ -134,16 +134,26 @@ echo "✅ Built: ${TAR_OUTPUT}"
 # -------------------------------------------------------------
 # 4. Build & Package Master CLI (Linux x86_64)
 # -------------------------------------------------------------
-echo "📦 Assembling Master Orchestrator CLI executable..."
+echo "📦 Assembling Master Orchestrator CLI executable & bundle..."
 if [ ! -f "${BUILD_DIR}/speedboat-master" ]; then
   echo "🔨 Binary build/speedboat-master not found. Building via 'make build-master-cli'..."
   make -C "${REPO_ROOT}" build-master-cli
 fi
 cp "${BUILD_DIR}/speedboat-master" "${BUILD_DIR}/speedboat-master-linux-amd64"
-tar -czf "${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz" -C "${BUILD_DIR}" speedboat-master
+
+MASTER_TAR_DIR="${DIST_DIR}/tar-master"
+mkdir -p "${MASTER_TAR_DIR}"
+cp "${BUILD_DIR}/speedboat-master" "${MASTER_TAR_DIR}/speedboat-master"
+chmod 755 "${MASTER_TAR_DIR}/speedboat-master"
+cp "${REPO_ROOT}/examples/docker-compose.yaml" "${MASTER_TAR_DIR}/docker-compose.yaml"
+if [ -f "${REPO_ROOT}/examples/nats.conf" ]; then
+  cp "${REPO_ROOT}/examples/nats.conf" "${MASTER_TAR_DIR}/nats.conf"
+fi
+
+tar -czf "${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz" -C "${MASTER_TAR_DIR}" speedboat-master docker-compose.yaml nats.conf
 echo "✅ Built: ${BUILD_DIR}/speedboat-master"
 echo "✅ Built: ${BUILD_DIR}/speedboat-master-linux-amd64"
-echo "✅ Built: ${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz"
+echo "✅ Built: ${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz (includes binary, docker-compose.yaml, nats.conf)"
 
 # -------------------------------------------------------------
 # 5. Generate SHA-256 Checksums
