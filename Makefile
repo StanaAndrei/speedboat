@@ -9,7 +9,7 @@ else
   WAILS_TAGS :=
 endif
 
-.PHONY: build build-master-cli build-agent-cli build-gui build-mac build-linux build-win package-linux clean compose-up compose-down test test-cluster test-cluster-2-agents test-cluster-3-agents test-master-only test-cluster-manual test-prime-cnt-cluster test-clean boot-agent add-agent add-agents list-agents stop-agents
+.PHONY: build build-master-cli build-agent-cli build-gui build-mac build-linux build-win package-linux package-win clean compose-up compose-down test test-cluster test-cluster-2-agents test-cluster-3-agents test-master-only test-cluster-manual test-prime-cnt-cluster test-clean boot-agent add-agent add-agents list-agents stop-agents
 
 build: build-master-cli build-agent-cli build-gui
 
@@ -56,9 +56,12 @@ package-linux:
 	./scripts/package_linux.sh $(or $(VERSION),1.0.0)
 
 build-win:
-	cd gui && wails build -platform windows/amd64 -o speedboat_win.exe
+	cd gui && CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 wails build -platform windows/amd64 -o speedboat-windows-amd64.exe
 	@mkdir -p build
-	@cp gui/build/bin/speedboat_win.exe build/
+	@cp gui/build/bin/speedboat-windows-amd64.exe build/
+
+package-win:
+	./scripts/package_windows.sh $(or $(VERSION),1.0.0)
 
 compose-up:
 	cd ./examples && docker compose up -d
