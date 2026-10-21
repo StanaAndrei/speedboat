@@ -14,7 +14,7 @@ endif
 build: build-master-cli build-agent-cli build-gui
 
 build-master-cli:
-	CGO_ENABLED=0 go build -o build/speedboat-master ./cmd/master
+	CGO_ENABLED=0 go build -ldflags="-s -w" -o build/speedboat-master ./cmd/master
 
 build-agent-cli:
 	CGO_ENABLED=0 go build -o build/speedboat-agent ./cmd/agent

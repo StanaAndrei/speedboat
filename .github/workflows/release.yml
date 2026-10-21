@@ -1,4 +1,4 @@
-name: Release Desktop Agent & Packages
+name: Release Desktop Agent, Master CLI & Packages
 
 on:
   push:
@@ -38,6 +38,10 @@ jobs:
         run: |
           go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      - name: Build Master CLI Executable
+        run: |
+          make build-master-cli
+
       - name: Build & Package Linux Distributables
         run: |
           ./scripts/package_linux.sh "${GITHUB_REF_NAME:-1.0.0}"
@@ -46,6 +50,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            build/speedboat-master
+            build/speedboat-master-linux-amd64
+            build/speedboat-master-linux-amd64.tar.gz
             build/speedboat-linux-amd64.deb
             build/speedboat-linux-amd64.tar.gz
             build/SHA256SUMS.txt

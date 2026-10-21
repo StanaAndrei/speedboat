@@ -133,6 +133,7 @@
 
         <!-- Quick Jump Links -->
         <div style="display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap;">
+          <a href="#quick-download" class="badge badge-emerald" style="text-decoration: none; padding: 0.4rem 0.8rem;">📥 Download CLI</a>
           <a href="#prerequisites" class="badge badge-cyan" style="text-decoration: none; padding: 0.4rem 0.8rem;">1. Prerequisites</a>
           <a href="#infrastructure" class="badge badge-cyan" style="text-decoration: none; padding: 0.4rem 0.8rem;">2. Infrastructure</a>
           <a href="#stream-contract" class="badge badge-cyan" style="text-decoration: none; padding: 0.4rem 0.8rem;">3. Stream Contract</a>
@@ -147,6 +148,47 @@
     <!-- Master Architecture Walkthrough -->
     <section class="section">
       <div class="container">
+        <!-- Quick Install: Master CLI Executable -->
+        <div id="quick-download" style="margin-bottom: 3.5rem;">
+          <div class="stat-card" style="border-color: rgba(0, 240, 255, 0.35); background: linear-gradient(135deg, rgba(6, 12, 28, 0.85) 0%, rgba(10, 20, 42, 0.6) 100%);">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.2rem;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                  <span class="badge badge-cyan">CLI Binary Release</span>
+                  <span class="badge badge-emerald" data-release-version>Latest Release</span>
+                  <span class="badge badge-violet">Linux x86_64</span>
+                </div>
+                <h2 style="font-size: 1.5rem; font-weight: 800; color: #fff;">Download Master Orchestrator CLI</h2>
+                <p style="color: var(--text-secondary); max-width: 780px; margin-top: 0.4rem; font-size: 0.92rem;">
+                  Download the standalone master orchestrator executable (<code>speedboat-master</code>) directly via <code>curl</code>. This dynamic link automatically pulls the latest build from the GitHub release.
+                </p>
+              </div>
+              <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                <a href="https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-master" class="btn btn-solid-cyan btn-sm">
+                  ⬇ Download Binary
+                </a>
+                <a href="https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-master-linux-amd64.tar.gz" class="btn btn-outline btn-sm">
+                  Download .tar.gz
+                </a>
+              </div>
+            </div>
+
+            <div class="code-block-wrapper" style="margin: 0;">
+              <div class="code-header">
+                <span class="code-lang-tag">bash (one-liner curl)</span>
+                <button class="copy-btn">📋 Copy Command</button>
+              </div>
+              <pre><code>curl -sSL -o speedboat-master https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-master && chmod +x speedboat-master</code></pre>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.8rem; flex-wrap: wrap; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+              <span>Run <code>./speedboat-master --help</code> to inspect available CLI commands (build, build-wasm, run).</span>
+              <span style="font-family: var(--font-mono); color: var(--wake-cyan);">Statically Linked &bull; No Dependencies</span>
+            </div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
         <!-- Step 1: Prerequisites & Architecture -->
         <div id="prerequisites" style="margin-bottom: 3.5rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
@@ -370,7 +412,7 @@ sys.stdout.flush()</code></pre>
             <h2 style="font-size: 1.8rem; font-weight: 800;">Launching the Master Grid</h2>
           </div>
           <p style="color: var(--text-secondary); margin-bottom: 1.2rem;">
-            Run the master orchestrator to load tasks, publish work streams to NATS, and host the live browser dashboard:
+            Run the master orchestrator to load tasks, publish work streams to NATS, and host the live browser dashboard (using either the downloaded <code>speedboat-master</code> binary or <code>go run</code>):
           </p>
 
           <div class="code-block-wrapper">
@@ -378,7 +420,16 @@ sys.stdout.flush()</code></pre>
               <span class="code-lang-tag">bash</span>
               <button class="copy-btn">📋 Copy Command</button>
             </div>
-            <pre><code>go run ./cmd/master run \
+            <pre><code># Option A: Using the downloaded speedboat-master executable
+./speedboat-master run \
+  --project-dir ./examples/prime-cnt \
+  --nats-url nats://localhost:4222 \
+  --registry localhost:5000 \
+  --web-port 3000 \
+  --wasm ./examples/prime-cnt/logic.wasm
+
+# Option B: Running directly from source via Go toolchain
+go run ./cmd/master run \
   --project-dir ./examples/prime-cnt \
   --nats-url nats://localhost:4222 \
   --registry localhost:5000 \

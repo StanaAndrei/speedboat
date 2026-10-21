@@ -132,11 +132,30 @@ tar -czf "${TAR_OUTPUT}" -C "${DIST_DIR}/tar-root" speedboat
 echo "✅ Built: ${TAR_OUTPUT}"
 
 # -------------------------------------------------------------
-# 4. Generate SHA-256 Checksums
+# 4. Build & Package Master CLI (Linux x86_64)
+# -------------------------------------------------------------
+echo "📦 Assembling Master Orchestrator CLI executable..."
+if [ ! -f "${BUILD_DIR}/speedboat-master" ]; then
+  echo "🔨 Binary build/speedboat-master not found. Building via 'make build-master-cli'..."
+  make -C "${REPO_ROOT}" build-master-cli
+fi
+cp "${BUILD_DIR}/speedboat-master" "${BUILD_DIR}/speedboat-master-linux-amd64"
+tar -czf "${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz" -C "${BUILD_DIR}" speedboat-master
+echo "✅ Built: ${BUILD_DIR}/speedboat-master"
+echo "✅ Built: ${BUILD_DIR}/speedboat-master-linux-amd64"
+echo "✅ Built: ${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz"
+
+# -------------------------------------------------------------
+# 5. Generate SHA-256 Checksums
 # -------------------------------------------------------------
 echo "🔒 Computing SHA-256 checksums..."
 cd "${BUILD_DIR}"
-sha256sum "speedboat-linux-amd64.deb" "speedboat-linux-amd64.tar.gz" > "${BUILD_DIR}/SHA256SUMS.txt"
+CHECKSUM_FILES=("speedboat-linux-amd64.deb" "speedboat-linux-amd64.tar.gz")
+[ -f "speedboat-master" ] && CHECKSUM_FILES+=("speedboat-master")
+[ -f "speedboat-master-linux-amd64" ] && CHECKSUM_FILES+=("speedboat-master-linux-amd64")
+[ -f "speedboat-master-linux-amd64.tar.gz" ] && CHECKSUM_FILES+=("speedboat-master-linux-amd64.tar.gz")
+
+sha256sum "${CHECKSUM_FILES[@]}" > "${BUILD_DIR}/SHA256SUMS.txt"
 cat "${BUILD_DIR}/SHA256SUMS.txt"
 
 # Clean temporary assemble tree
@@ -146,5 +165,8 @@ echo "============================================================"
 echo "🎉 Linux release packaging complete!"
 echo "   - ${DEB_OUTPUT}"
 echo "   - ${TAR_OUTPUT}"
+echo "   - ${BUILD_DIR}/speedboat-master"
+echo "   - ${BUILD_DIR}/speedboat-master-linux-amd64"
+echo "   - ${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz"
 echo "   - ${BUILD_DIR}/SHA256SUMS.txt"
 echo "============================================================"
