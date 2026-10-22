@@ -383,7 +383,7 @@ sys.stdout.flush()</code></pre>
                 Compiles your C++/Rust/C source file directly into an optimized <code>.wasm</code> bytecode file using ephemeral <code>wasi-sdk</code>:
               </p>
               <div class="code-block-wrapper" style="margin: 0;">
-                <pre><code>go run ./cmd/master build-wasm -p ./examples/prime-cnt</code></pre>
+                <pre><code>./speedboat-master build-wasm -p ./examples/prime-cnt</code></pre>
               </div>
               <ul style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.8rem; padding-left: 1.2rem;">
                 <li>Tiny artifact size: 1 MB – 15 MB</li>
@@ -402,7 +402,7 @@ sys.stdout.flush()</code></pre>
                 Bakes and tags an unprivileged container image and pushes it to the local registry for GPU passthrough:
               </p>
               <div class="code-block-wrapper" style="margin: 0;">
-                <pre><code>go run ./cmd/master build -p ./examples/prime-cnt</code></pre>
+                <pre><code>./speedboat-master build -p ./examples/prime-cnt</code></pre>
               </div>
               <ul style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.8rem; padding-left: 1.2rem;">
                 <li>Full hardware acceleration (CUDA, ROCm, AVX-512)</li>

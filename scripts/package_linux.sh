@@ -156,7 +156,40 @@ echo "✅ Built: ${BUILD_DIR}/speedboat-master-linux-amd64"
 echo "✅ Built: ${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz (includes binary, docker-compose.yaml, nats.conf)"
 
 # -------------------------------------------------------------
-# 5. Generate SHA-256 Checksums
+# 5. Build & Package Agent CLI (Linux x86_64)
+# -------------------------------------------------------------
+echo "📦 Assembling Headless Agent CLI executable & bundle..."
+if [ ! -f "${BUILD_DIR}/speedboat-agent" ]; then
+  echo "🔨 Binary build/speedboat-agent not found. Building via 'make build-agent-cli'..."
+  make -C "${REPO_ROOT}" build-agent-cli
+fi
+cp "${BUILD_DIR}/speedboat-agent" "${BUILD_DIR}/speedboat-agent-linux-amd64"
+
+AGENT_TAR_DIR="${DIST_DIR}/tar-agent"
+mkdir -p "${AGENT_TAR_DIR}"
+cp "${BUILD_DIR}/speedboat-agent" "${AGENT_TAR_DIR}/speedboat-agent"
+chmod 755 "${AGENT_TAR_DIR}/speedboat-agent"
+
+cat << EOF > "${AGENT_TAR_DIR}/README.txt"
+Speedboat Headless CLI Agent (Linux x86_64) - Version ${VERSION}
+==================================================================
+
+Project Speedboat: Universal Volunteer Computing Headless Worker
+
+Running the Agent:
+  Execute the binary directly from terminal:
+    ./speedboat-agent run --project-id prime-counter --nats-url nats://localhost:4222
+
+More info: https://github.com/StanaAndrei/speedboat
+EOF
+
+tar -czf "${BUILD_DIR}/speedboat-agent-linux-amd64.tar.gz" -C "${AGENT_TAR_DIR}" speedboat-agent README.txt
+echo "✅ Built: ${BUILD_DIR}/speedboat-agent"
+echo "✅ Built: ${BUILD_DIR}/speedboat-agent-linux-amd64"
+echo "✅ Built: ${BUILD_DIR}/speedboat-agent-linux-amd64.tar.gz"
+
+# -------------------------------------------------------------
+# 6. Generate SHA-256 Checksums
 # -------------------------------------------------------------
 echo "🔒 Computing SHA-256 checksums..."
 cd "${BUILD_DIR}"
@@ -164,6 +197,9 @@ CHECKSUM_FILES=("speedboat-linux-amd64.deb" "speedboat-linux-amd64.tar.gz")
 [ -f "speedboat-master" ] && CHECKSUM_FILES+=("speedboat-master")
 [ -f "speedboat-master-linux-amd64" ] && CHECKSUM_FILES+=("speedboat-master-linux-amd64")
 [ -f "speedboat-master-linux-amd64.tar.gz" ] && CHECKSUM_FILES+=("speedboat-master-linux-amd64.tar.gz")
+[ -f "speedboat-agent" ] && CHECKSUM_FILES+=("speedboat-agent")
+[ -f "speedboat-agent-linux-amd64" ] && CHECKSUM_FILES+=("speedboat-agent-linux-amd64")
+[ -f "speedboat-agent-linux-amd64.tar.gz" ] && CHECKSUM_FILES+=("speedboat-agent-linux-amd64.tar.gz")
 
 sha256sum "${CHECKSUM_FILES[@]}" > "${BUILD_DIR}/SHA256SUMS.txt"
 cat "${BUILD_DIR}/SHA256SUMS.txt"
@@ -178,5 +214,8 @@ echo "   - ${TAR_OUTPUT}"
 echo "   - ${BUILD_DIR}/speedboat-master"
 echo "   - ${BUILD_DIR}/speedboat-master-linux-amd64"
 echo "   - ${BUILD_DIR}/speedboat-master-linux-amd64.tar.gz"
+echo "   - ${BUILD_DIR}/speedboat-agent"
+echo "   - ${BUILD_DIR}/speedboat-agent-linux-amd64"
+echo "   - ${BUILD_DIR}/speedboat-agent-linux-amd64.tar.gz"
 echo "   - ${BUILD_DIR}/SHA256SUMS.txt"
 echo "============================================================"

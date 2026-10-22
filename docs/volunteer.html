@@ -324,19 +324,43 @@
           </p>
         </div>
 
-        <!-- Quick Install Snippet -->
-        <div style="margin-bottom: 2rem;">
-          <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.6rem;">One-Line Quick Installation</h3>
-          <div class="code-block-wrapper">
-            <div class="code-header">
-              <span class="code-lang-tag">bash</span>
-              <button class="copy-btn">📋 Copy Command</button>
+        <!-- Quick Install: Headless CLI Agent Executable -->
+        <div style="margin-bottom: 2.5rem;">
+          <div class="stat-card" style="border-color: rgba(0, 240, 255, 0.35); background: linear-gradient(135deg, rgba(6, 12, 28, 0.85) 0%, rgba(10, 20, 42, 0.6) 100%);">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.2rem;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                  <span class="badge badge-cyan">Headless Worker Release</span>
+                  <span class="badge badge-emerald" data-release-version>Latest Release</span>
+                  <span class="badge badge-violet">Linux x86_64</span>
+                </div>
+                <h3 style="font-size: 1.35rem; font-weight: 800; color: #fff;">Download Headless CLI Agent (speedboat-agent)</h3>
+                <p style="color: var(--text-secondary); max-width: 780px; margin-top: 0.4rem; font-size: 0.92rem;">
+                  Download the standalone headless worker binary directly via <code>curl</code> for Linux (x86_64). This dynamic link automatically pulls the latest build from GitHub Releases.
+                </p>
+              </div>
+              <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                <a href="https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-agent" class="btn btn-solid-cyan btn-sm">
+                  ⬇ Download Binary
+                </a>
+                <a href="https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-agent-linux-amd64.tar.gz" class="btn btn-outline btn-sm">
+                  Download .tar.gz
+                </a>
+              </div>
             </div>
-            <pre><code>curl -sSL https://get.speedboat.dev/install.sh | bash</code></pre>
+
+            <div class="code-block-wrapper" style="margin: 0;">
+              <div class="code-header">
+                <span class="code-lang-tag">bash (download binary via curl)</span>
+                <button class="copy-btn">📋 Copy Command</button>
+              </div>
+              <pre><code>curl -sSL -o speedboat-agent https://github.com/StanaAndrei/speedboat/releases/latest/download/speedboat-agent && chmod +x speedboat-agent</code></pre>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.8rem; flex-wrap: wrap; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+              <span>Direct execution: <code>./speedboat-agent run --project-id &lt;id&gt; --nats-url &lt;url&gt;</code> &bull; Or via Go: <code>go install github.com/stanaandrei/speedboat/cmd/agent@latest</code></span>
+              <span style="font-family: var(--font-mono); color: var(--wake-cyan);">Statically Linked &bull; Embedded wazero WASM JIT</span>
+            </div>
           </div>
-          <p style="font-size: 0.85rem; color: var(--text-muted);">
-            Or install directly via Go toolchain: <code>go install github.com/stanaandrei/speedboat/cmd/agent@latest</code>
-          </p>
         </div>
 
         <!-- Interactive CLI Command Builder -->

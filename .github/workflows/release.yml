@@ -1,4 +1,4 @@
-name: Release Desktop Agent, Master CLI & Packages
+name: Release Desktop Agent, CLI Workers & Packages
 
 on:
   push:
@@ -42,6 +42,10 @@ jobs:
         run: |
           make build-master-cli
 
+      - name: Build Agent CLI Executable
+        run: |
+          make build-agent-cli
+
       - name: Build & Package Linux Distributables
         run: |
           ./scripts/package_linux.sh "${GITHUB_REF_NAME:-1.0.0}"
@@ -57,6 +61,9 @@ jobs:
             build/speedboat-master
             build/speedboat-master-linux-amd64
             build/speedboat-master-linux-amd64.tar.gz
+            build/speedboat-agent
+            build/speedboat-agent-linux-amd64
+            build/speedboat-agent-linux-amd64.tar.gz
             build/speedboat-linux-amd64.deb
             build/speedboat-linux-amd64.tar.gz
             build/speedboat-windows-amd64.exe
