@@ -43,6 +43,7 @@ type App struct {
 	cache    *cache.WasmCache
 	heavyMgr HeavyEngineManager
 	pool     *WorkerPool
+	trayMgr  *TrayManager
 	mu       sync.Mutex
 }
 
@@ -74,24 +75,33 @@ func NewApp() *App {
 	wasmCache, _ := cache.NewWasmCache()
 	heavyMgr := NewHeavyEngineManager()
 
-	return &App{
+	app := &App{
 		ip:       ip,
 		workerID: workerID,
 		cache:    wasmCache,
 		heavyMgr: heavyMgr,
 	}
+	app.trayMgr = NewTrayManager(app)
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	if a.trayMgr != nil {
+		a.trayMgr.Start(ctx)
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if a.pool != nil {
 		a.pool.Stop()
 		a.pool = nil
+	}
+	a.mu.Unlock()
+
+	if a.trayMgr != nil {
+		a.trayMgr.Shutdown()
 	}
 }
 
@@ -295,12 +305,33 @@ func (a *App) emitLog(level, msg string) {
 	}
 }
 
+func (a *App) MinimizeToTray() {
+	if a.trayMgr != nil {
+		a.trayMgr.HideWindow()
+	} else if a.ctx != nil {
+		wruntime.WindowHide(a.ctx)
+	}
+}
+
+func (a *App) RestoreFromTray() {
+	if a.trayMgr != nil {
+		a.trayMgr.ShowWindow()
+	} else if a.ctx != nil {
+		wruntime.WindowShow(a.ctx)
+		wruntime.WindowUnminimise(a.ctx)
+		wruntime.Show(a.ctx)
+	}
+}
+
 func (a *App) emitStatus(state, text string) {
 	if a.ctx != nil {
 		wruntime.EventsEmit(a.ctx, "status", map[string]string{
 			"state": state,
 			"text":  text,
 		})
+	}
+	if a.trayMgr != nil {
+		a.trayMgr.UpdateStatus(state, text)
 	}
 }
 

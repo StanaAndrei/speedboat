@@ -8,9 +8,13 @@ export function GetSystemInfo():Promise<main.SystemInfo>;
 
 export function InstallHeavyEngine():Promise<void>;
 
+export function MinimizeToTray():Promise<void>;
+
 export function PauseCompute():Promise<void>;
 
 export function ResolveProjectURL(arg1:string):Promise<main.ProjectMetadata>;
+
+export function RestoreFromTray():Promise<void>;
 
 export function ResumeCompute():Promise<void>;
 

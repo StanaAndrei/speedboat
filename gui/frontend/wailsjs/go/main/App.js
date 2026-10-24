@@ -14,12 +14,20 @@ export function InstallHeavyEngine() {
   return window['go']['main']['App']['InstallHeavyEngine']();
 }
 
+export function MinimizeToTray() {
+  return window['go']['main']['App']['MinimizeToTray']();
+}
+
 export function PauseCompute() {
   return window['go']['main']['App']['PauseCompute']();
 }
 
 export function ResolveProjectURL(arg1) {
   return window['go']['main']['App']['ResolveProjectURL'](arg1);
+}
+
+export function RestoreFromTray() {
+  return window['go']['main']['App']['RestoreFromTray']();
 }
 
 export function ResumeCompute() {
