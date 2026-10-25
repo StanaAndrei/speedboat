@@ -130,8 +130,12 @@ func (p *WorkerPool) Start(parentCtx context.Context) error {
 	p.nc = nc
 	p.log("success", "✓ Connected to NATS cluster")
 
-	if p.computeMode == "apptainer" {
-		p.log("info", fmt.Sprintf("🚀 Heavy Mode enabled (Apptainer native container runtime)"))
+	if p.computeMode == "apptainer" || p.computeMode == "heavy" {
+		engName := "Native Container"
+		if p.engine != nil {
+			engName = p.engine.Name()
+		}
+		p.log("info", fmt.Sprintf("🚀 Heavy Mode enabled (%s runtime)", engName))
 	} else {
 		p.log("info", fmt.Sprintf("⚙️ Compiling WASM module in-memory with wazero JIT (%d KB)...", len(p.wasmBytes)/1024))
 		r := wazero.NewRuntime(p.ctx)
@@ -314,7 +318,7 @@ func (p *WorkerPool) workerLoop(workerNum int) {
 			var stdoutBytes []byte
 			var execErr error
 
-			if p.computeMode == "apptainer" {
+			if p.computeMode == "apptainer" || p.computeMode == "heavy" {
 				image := task.Image
 				if image == "" {
 					image = fmt.Sprintf("%s:latest", p.projectID)

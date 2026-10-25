@@ -206,8 +206,12 @@ func (a *App) StartCompute(cfg StartConfig) error {
 	var wasmBytes []byte
 	var containerEng speedboatRuntime.Engine
 
-	if cfg.ComputeMode == "apptainer" {
-		a.emitLog("info", "🚀 Initializing Heavy Mode (Apptainer)...")
+	if cfg.ComputeMode == "apptainer" || cfg.ComputeMode == "heavy" {
+		engineName := a.heavyMgr.GetCapabilities().EngineName
+		if engineName == "" {
+			engineName = "Container"
+		}
+		a.emitLog("info", fmt.Sprintf("🚀 Initializing Heavy Mode (%s)...", engineName))
 		eng, err := a.heavyMgr.CreateEngine(cfg.EnableGPU)
 		if err != nil {
 			a.emitLog("err", fmt.Sprintf("❌ Container engine error: %v", err))

@@ -199,32 +199,6 @@ func (a *ApptainerEngine) PullImage(ctx context.Context, image string) error {
 	return nil
 }
 
-func HasNvidiaGPU() bool {
-	for _, dev := range []string{"/dev/nvidia0", "/dev/nvidiactl"} {
-		if _, err := os.Stat(dev); err == nil {
-			return true
-		}
-	}
-	return false
-}
-
-func HasAmdGPU() bool {
-	if _, err := os.Stat("/dev/kfd"); err == nil {
-		return true
-	}
-	return false
-}
-
-func DetectHostGPU() (bool, string) {
-	if HasNvidiaGPU() {
-		return true, "NVIDIA"
-	}
-	if HasAmdGPU() {
-		return true, "AMD"
-	}
-	return false, "None"
-}
-
 func (a *ApptainerEngine) Execute(ctx context.Context, image string, input []byte) ([]byte, error) {
 	if !a.IsAvailable() {
 		return nil, fmt.Errorf("apptainer binary not found")

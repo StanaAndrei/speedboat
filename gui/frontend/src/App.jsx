@@ -190,7 +190,7 @@ export function App() {
       await window.go.main.App.InstallHeavyEngine();
       await refreshCaps();
       setInstallSuccess(true);
-      setInstallProgress({ percent: 100, message: '✓ Apptainer installed and verified successfully!' });
+      setInstallProgress({ percent: 100, message: `✓ ${engineCaps?.engine_name || 'Container engine'} installed and verified successfully!` });
       setTimeout(() => {
         setComputeMode('apptainer');
         setShowInstallModal(false);
@@ -477,7 +477,7 @@ export function App() {
               </div>
               <div class="stat-value" style={{ fontSize: '1.1rem', color: '#38bdf8' }}>
                 {computeMode === 'apptainer'
-                  ? `Apptainer ${enableGPU ? '(+GPU)' : ''}`
+                  ? `${engineCaps?.engine_name || 'Container'} ${enableGPU ? '(+GPU)' : ''}`
                   : 'Wazero WASM'}
               </div>
             </div>
@@ -532,7 +532,11 @@ export function App() {
                 </div>
                 <div class="terminal-title">
                   <span class="pulse-led"></span>
-                  <span>{computeMode === 'apptainer' ? 'apptainer-container-log' : 'wazero-wasm-log'} ({systemInfo.worker_id})</span>
+                  <span>
+                    {computeMode === 'apptainer'
+                      ? `${(engineCaps?.engine_name || 'container').toLowerCase().replace(/[^a-z0-9]/g, '-')}-log`
+                      : 'wazero-wasm-log'} ({systemInfo.worker_id})
+                  </span>
                 </div>
               </div>
 
@@ -611,7 +615,7 @@ export function App() {
         <div class="modal-backdrop" onClick={() => { if (!isInstalling) setShowInstallModal(false); }}>
           <div class="modal-card" onClick={(e) => e.stopPropagation()}>
             <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
-              <h3>🚀 Install Apptainer Container Engine</h3>
+              <h3>🚀 Install {engineCaps?.engine_name || 'Container Engine'}</h3>
               {!isInstalling && (
                 <button
                   type="button"
@@ -627,7 +631,9 @@ export function App() {
                 Heavy Mode executes tasks directly inside isolated rootless container environments with full CPU throughput and optional GPU passthrough.
               </p>
               <p style="margin-bottom: 0.75rem; color: #94a3b8; font-size: 0.85rem;">
-                This one-click install sets up Apptainer locally in your user folder (<code style="color: var(--accent);">~/.local/share/speedboat</code>) without requiring root/sudo privileges or terminal commands.
+                {engineCaps?.platform === 'windows'
+                  ? 'This one-click setup provisions an ultra-lightweight Alpine Linux WSL2 environment (~5 MB) with container support and optional NVIDIA CUDA GPU acceleration, without requiring Docker Desktop or complex setup.'
+                  : 'This one-click install sets up Apptainer locally in your user folder (~/.local/share/speedboat) without requiring root/sudo privileges or terminal commands.'}
               </p>
 
               {(isInstalling || installSuccess) && (
@@ -665,7 +671,11 @@ export function App() {
                 disabled={isInstalling || installSuccess}
                 onClick={handleRunInstall}
               >
-                {isInstalling ? 'Installing...' : installSuccess ? '✓ Installed' : 'Install Apptainer (One-Click)'}
+                {isInstalling
+                  ? 'Installing...'
+                  : installSuccess
+                  ? '✓ Installed'
+                  : `Install ${engineCaps?.engine_name || 'Container Engine'} (One-Click)`}
               </button>
             </div>
           </div>

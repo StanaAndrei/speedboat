@@ -33,6 +33,13 @@ func AutoDetectEngine(preference string) (Engine, error) {
 		}
 		return nil, fmt.Errorf("docker runtime requested but docker is not available")
 
+	case "wsl", "wsl2":
+		wslEng := NewWSLEngine("")
+		if wslEng.IsAvailable() {
+			return wslEng, nil
+		}
+		return nil, fmt.Errorf("wsl runtime requested but wsl is not available")
+
 	case "wasm", "wazero":
 		if wasmEng.IsAvailable() {
 			return wasmEng, nil
@@ -46,10 +53,14 @@ func AutoDetectEngine(preference string) (Engine, error) {
 		if apptainerEng.IsAvailable() {
 			return apptainerEng, nil
 		}
+		wslEng := NewWSLEngine("")
+		if wslEng.IsAvailable() {
+			return wslEng, nil
+		}
 		if wasmEng.IsAvailable() {
 			return wasmEng, nil
 		}
-		return nil, fmt.Errorf("no supported runtime engine (Docker, Apptainer, or WASM) found on host")
+		return nil, fmt.Errorf("no supported runtime engine (Docker, Apptainer, WSL2, or WASM) found on host")
 
 	default:
 		return nil, fmt.Errorf("unknown runtime engine preference: %s", preference)
