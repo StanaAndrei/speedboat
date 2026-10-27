@@ -64,6 +64,12 @@ Windows uses the built-in Microsoft Edge WebView2 runtime. No C++ or GTK librari
    go install github.com/wailsapp/wails/v2/cmd/wails@latest
    ```
 
+Cross compile Linux &rarr; Windows
+   ```bash
+    sudo apt install gcc-mingw-w64
+    wails build -platform windows/amd64
+
+   ```
 ---
 
 ## Building the Project
