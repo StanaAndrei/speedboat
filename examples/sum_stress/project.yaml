@@ -1,0 +1,15 @@
+name: sum_stress
+version: "1.0.0"
+container:
+  dockerfile: "./Dockerfile"
+  image_tag: "sum-stress:latest"
+generator:
+  runtime: python3
+  source: generator.py
+reducer:
+  runtime: python3
+  source: reducer.py
+verification:
+  redundancy: 1
+  consensus_threshold: 1
+  iterations: 5
